@@ -1,0 +1,124 @@
+#!/usr/bin/env bun
+import { whoami } from "./commands/whoami";
+import { configCmd } from "./commands/config-cmd";
+import { find } from "./commands/find";
+import { list } from "./commands/list";
+import { claim } from "./commands/claim";
+import { update } from "./commands/update";
+import { logger } from "./utils/logger";
+import { VERSION } from "./version";
+
+async function main() {
+  const args = Bun.argv.slice(2);
+
+  if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+    showHelp();
+    return;
+  }
+
+  const command = args[0];
+
+  try {
+    switch (command) {
+      case "--version":
+      case "-v":
+        console.log(`coupon-finder v${VERSION}`);
+        break;
+
+      case "whoami":
+        await whoami();
+        break;
+
+      case "config":
+        await configCmd(args.slice(1));
+        break;
+
+      case "find": {
+        const options: any = {};
+        for (let i = 1; i < args.length; i++) {
+          if (args[i] === "--pages" && args[i + 1]) {
+            options.pages = parseInt(args[++i]);
+          } else if (args[i] === "--source" && args[i + 1]) {
+            options.source = args[++i];
+          } else if (args[i] === "--no-parallel") {
+            options.parallel = false;
+          }
+        }
+        await find(options);
+        break;
+      }
+
+      case "list":
+        await list();
+        break;
+
+      case "claim": {
+        const options: any = {};
+        for (let i = 1; i < args.length; i++) {
+          if (args[i] === "--open") {
+            options.open = true;
+          }
+        }
+        await claim(options);
+        break;
+      }
+
+      case "update":
+        await update();
+        break;
+
+      default:
+        logger.error(`Unknown command: ${command}`);
+        showHelp();
+        process.exit(1);
+    }
+  } catch (error) {
+    logger.error(
+      `Error: ${error instanceof Error ? error.message : error}`
+    );
+    process.exit(1);
+  }
+}
+
+function showHelp() {
+  console.log(`
+coupon-finder v${VERSION}
+
+Find, check, and claim free Udemy courses from multiple coupon sources.
+
+USAGE:
+  coupon-finder <COMMAND> [OPTIONS]
+
+COMMANDS:
+  whoami          Check your Udemy login session
+  config          View or edit configuration
+  find            Scrape coupons from configured sources
+  list            Check enrollment status for scraped courses
+  claim           Auto-enroll in claimable courses
+  update          Check for and install updates
+
+OPTIONS:
+  --version, -v   Show version
+  --help, -h      Show this help message
+
+CLAIM OPTIONS:
+  --open          Open course URLs in browser (10 at a time, press Enter between batches)
+
+EXAMPLES:
+  coupon-finder whoami
+  coupon-finder config
+  coupon-finder config --set pages=10
+  coupon-finder find --pages 5
+  coupon-finder list
+  coupon-finder claim
+  coupon-finder claim --open
+  coupon-finder update
+
+For more info, visit: https://github.com/minatorak/coupon-finder
+  `);
+}
+
+main().catch((error) => {
+  logger.error(`Fatal error: ${error instanceof Error ? error.message : error}`);
+  process.exit(1);
+});

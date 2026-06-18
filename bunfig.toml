@@ -1,0 +1,10 @@
+[build]
+# Optimize for CLI tool
+root = "./src"
+entrypoints = ["./cli.ts"]
+target = "bun"
+splitting = false
+
+[dev]
+# Fast reloads in development
+hot = true

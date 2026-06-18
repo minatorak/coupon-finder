@@ -1,0 +1,22 @@
+node_modules/
+dist/
+build/
+*.log
+.env
+.env.local
+.env*.local
+coupon-finder
+coupon-finder.exe
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+results/
+
+# Claude Code local settings
+.claude/
+.agents/
+skills-lock.json
+.env*
