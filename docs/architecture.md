@@ -24,7 +24,7 @@ Browser Session
       ↓
 UdemyAPI (auth check)
       ↓
-[Realdiscount] [Couponscorpion] [Udemyxpert] [Discudemy]
+[Realdiscount] [Couponscorpion] [Udemyxpert] [Couponami]
       ↓              ↓                 ↓            ↓
    Courses        Courses           Courses      Courses
       ↓
@@ -54,7 +54,7 @@ JSON Reports
 
 **Scrapers** (`src/plugins/scrapers/`)
 - Playwright-based page scraping
-- 4 sources: realdiscount, couponscorpion, udemyxpert, discudemy
+- 4 sources: realdiscount, couponscorpion, udemyxpert, couponami
 - Configurable retry logic (3x, 5s max)
 
 ### Udemy (`src/udemy/`)

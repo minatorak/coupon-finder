@@ -1,5 +1,4 @@
-import { BrowserPlugin, ScraperPlugin, SourceType } from "../types";
-import { logger } from "../utils/logger";
+import { BrowserPlugin, ScraperPlugin, SOURCE_TYPES, SourceType } from "../types";
 
 // Browser plugins
 import { FirefoxPlugin } from "./browsers/firefox";
@@ -10,7 +9,7 @@ import { BravePlugin } from "./browsers/brave";
 import { RealdiscountScraper } from "./scrapers/realdiscount";
 import { CouponscorpionScraper } from "./scrapers/couponscorpion";
 import { UdemyxpertScraper } from "./scrapers/udemyxpert";
-import { DiscudemyScraper } from "./scrapers/discudemy";
+import { CouponamiScraper } from "./scrapers/couponami";
 
 const browsers: Record<string, BrowserPlugin> = {
   firefox: new FirefoxPlugin(),
@@ -22,7 +21,7 @@ const scrapers: Record<SourceType, ScraperPlugin> = {
   realdiscount: new RealdiscountScraper(),
   couponscorpion: new CouponscorpionScraper(),
   udemyxpert: new UdemyxpertScraper(),
-  discudemy: new DiscudemyScraper(),
+  couponami: new CouponamiScraper(),
 };
 
 export function getBrowserPlugin(name: string): BrowserPlugin {
@@ -50,5 +49,5 @@ export function listBrowsers(): string[] {
 }
 
 export function listScrapers(): SourceType[] {
-  return Object.keys(scrapers) as SourceType[];
+  return [...SOURCE_TYPES];
 }

@@ -6,7 +6,7 @@ Coupon-finder is a command-line tool that automates discovering free Udemy cours
 
 ## Features
 
-- 🔍 **Multi-source scraping:** Scrape coupons from realdiscount, couponscorpion, udemyxpert, and discudemy simultaneously
+- 🔍 **Multi-source scraping:** Scrape coupons from realdiscount, couponscorpion, udemyxpert, and couponami simultaneously
 - 🔗 **Session-aware:** Reads your active Udemy browser session (Firefox, Chrome, Brave) to check enrollment status
 - 📊 **Deduplication:** Automatically merges results by course URL, keeping the best coupon code
 - 🚀 **Auto-enrollment:** Batch-enroll in courses with valid coupons
@@ -53,7 +53,7 @@ This scrapes 5 pages from each source in parallel and merges results:
   ✅ realdiscount: 45 courses
   ✅ couponscorpion: 38 courses
   ✅ udemyxpert: 52 courses
-  ✅ discudemy: 29 courses
+  ✅ couponami: 29 courses
 📊 Total: 164 courses (after dedup: 120)
 💾 Saved to: ~/.coupon-finder/results/2026-06-18T120500Z_merged.json
 ```
@@ -105,7 +105,7 @@ Scrape coupons from all configured sources.
 
 **Options:**
 - `--pages N` — number of pages per source (default: from config)
-- `--source NAME` — scrape specific source only (realdiscount, couponscorpion, udemyxpert, discudemy)
+- `--source NAME` — scrape specific source only (realdiscount, couponscorpion, udemyxpert, couponami)
 - `--no-parallel` — run sequentially instead of in parallel
 
 **Examples:**
@@ -151,7 +151,7 @@ coupon-finder config
 coupon-finder config --set pages=10
 coupon-finder config --set browser=chrome
 coupon-finder config --set parallel=false
-coupon-finder config --set sources=realdiscount,udemyxpert
+coupon-finder config --set sources=realdiscount,udemyxpert,couponami
 ```
 
 ## Configuration
@@ -162,7 +162,7 @@ Config file: `~/.coupon-finder/config.json`
 ```json
 {
   "pages": 1,
-  "sources": ["realdiscount", "couponscorpion", "udemyxpert", "discudemy"],
+  "sources": ["realdiscount", "couponscorpion", "udemyxpert", "couponami"],
   "parallel": true,
   "browser": "firefox",
   "headless": true,
@@ -203,7 +203,7 @@ Config file: `~/.coupon-finder/config.json`
 - ✅ **realdiscount.com** — React SPA, MUI pagination
 - ✅ **couponscorpion.com** — Static HTML, URL params
 - ✅ **udemyxpert.com** — Slug-based pagination
-- ✅ **discudemy.com** — Path-based pagination
+- ✅ **couponami.com** — Path-based pagination
 - 🔜 More sources can be added as plugins
 
 ## Troubleshooting

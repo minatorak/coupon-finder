@@ -19,10 +19,9 @@ export class RealdiscountScraper implements ScraperPlugin {
           await retryWithTimeout(async () => {
             logger.debug(`Scraping real.discount page ${pageNum}...`);
 
-            await page.goto(
-              "https://www.real.discount/coursespage/1/",
-              { waitUntil: "networkidle" }
-            );
+            await page.goto("https://www.real.discount/courses?page=1", {
+              waitUntil: "networkidle",
+            });
 
             // Navigate to target page if not page 1
             if (pageNum > 1) {
@@ -39,13 +38,9 @@ export class RealdiscountScraper implements ScraperPlugin {
 
             for (const el of courseElements) {
               try {
-                const title = await el
-                  .locator(".course-title")
-                  .textContent();
+                const title = await el.locator(".course-title").textContent();
                 const url = await el.locator("a").getAttribute("href");
-                const discount = await el
-                  .locator(".discount")
-                  .textContent();
+                const discount = await el.locator(".discount").textContent();
 
                 if (title && url) {
                   courses.push({
@@ -62,7 +57,9 @@ export class RealdiscountScraper implements ScraperPlugin {
               }
             }
 
-            logger.info(`realdiscount page ${pageNum}: ${courseElements.length} courses`);
+            logger.info(
+              `realdiscount page ${pageNum}: ${courseElements.length} courses`,
+            );
           });
         } catch (error) {
           logger.warn(`Failed to scrape page ${pageNum}: ${error}`);

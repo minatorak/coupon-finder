@@ -19,7 +19,7 @@ export class CouponscorpionScraper implements ScraperPlugin {
           await retryWithTimeout(async () => {
             logger.debug(`Scraping couponscorpion page ${pageNum}...`);
 
-            const url = `https://www.couponscorpion.com/category/free-udemy-courses/page/${pageNum}/`;
+            const url = `https://couponscorpion.com/page/${pageNum}/`;
             await page.goto(url, { waitUntil: "networkidle" });
 
             const courseElements = await page.locator(".course-item").all();
@@ -28,9 +28,7 @@ export class CouponscorpionScraper implements ScraperPlugin {
               try {
                 const title = await el.locator(".course-title").textContent();
                 const link = await el.locator("a").getAttribute("href");
-                const discount = await el
-                  .locator(".discount")
-                  .textContent();
+                const discount = await el.locator(".discount").textContent();
 
                 if (title && link) {
                   courses.push({
@@ -47,7 +45,9 @@ export class CouponscorpionScraper implements ScraperPlugin {
               }
             }
 
-            logger.info(`couponscorpion page ${pageNum}: ${courseElements.length} courses`);
+            logger.info(
+              `couponscorpion page ${pageNum}: ${courseElements.length} courses`,
+            );
           });
         } catch (error) {
           logger.warn(`Failed to scrape page ${pageNum}: ${error}`);

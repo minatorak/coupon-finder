@@ -51,7 +51,7 @@
 ### ✅ Phase 4: All Scrapers + Merge Logic
 - [x] Couponscorpion scraper (static HTML)
 - [x] Udemyxpert scraper (slug-based pagination)
-- [x] Discudemy scraper (path-based pagination)
+- [x] CouponAmI scraper (path-based pagination)
 - [x] Merger logic (`src/merge/merger.ts`)
   - Deduplicate by URL
   - Collect all coupon codes per course
@@ -154,7 +154,7 @@ coupon-finder/
 │   ├── plugins/                   # Pluggable architecture ✅
 │   │   ├── registry.ts
 │   │   ├── browsers/              # Firefox, Chrome, Brave
-│   │   └── scrapers/              # 4 sources (realdiscount, couponscorpion, udemyxpert, discudemy)
+│   │   └── scrapers/              # 4 sources (realdiscount, couponscorpion, udemyxpert, couponami)
 │   ├── udemy/                     # Udemy API logic ✅
 │   │   ├── session.ts
 │   │   ├── api.ts
@@ -216,7 +216,7 @@ coupon-finder/
 ✅ real.discount (React SPA, MUI pagination)
 ✅ couponscorpion.com (Static HTML)
 ✅ udemyxpert.com (Slug-based pagination)
-✅ discudemy.com (Path-based pagination)
+✅ couponami.com (Path-based pagination)
 
 ### Advanced Features
 ✅ Parallel scraping (configurable)
@@ -283,7 +283,7 @@ coupon-finder find --no-parallel
 # Edit configuration
 coupon-finder config --set parallel=false
 coupon-finder config --set browser=chrome
-coupon-finder config --set sources=realdiscount,udemyxpert
+coupon-finder config --set sources=realdiscount,udemyxpert,couponami
 ```
 
 ---

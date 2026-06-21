@@ -11,7 +11,7 @@
 ### 1. Remaining Scrapers
 - [ ] Create `src/plugins/scrapers/couponscorpion.ts`
 - [ ] Create `src/plugins/scrapers/udemyxpert.ts`
-- [ ] Create `src/plugins/scrapers/discudemy.ts`
+- [ ] Create `src/plugins/scrapers/couponami.ts`
 
 ### 2. Merge Logic
 - [ ] Create `src/merge/merger.ts` (dedup by URL, collect all coupon codes, sort by discount)

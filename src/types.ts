@@ -19,7 +19,7 @@ export type SourceType =
   | "couponscorpion"
   | "realdiscount"
   | "udemyxpert"
-  | "discudemy";
+  | "couponami"
 
 export interface Config {
   pages: number;

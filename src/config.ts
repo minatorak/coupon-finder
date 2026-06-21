@@ -6,7 +6,7 @@ import { logger } from "./utils/logger";
 
 const DEFAULT_CONFIG: Config = {
   pages: 1,
-  sources: ["realdiscount", "couponscorpion", "udemyxpert", "discudemy"],
+  sources: ["realdiscount", "couponscorpion", "udemyxpert", "couponami"],
   parallel: true,
   browser: "firefox",
   headless: true,
@@ -16,6 +16,17 @@ const DEFAULT_CONFIG: Config = {
 };
 
 let cachedConfig: Config | null = null;
+
+function normalizeSource(source: SourceType): SourceType {
+  return source === "discudemy" ? "couponami" : source;
+}
+
+function normalizeConfig(config: Config): Config {
+  return {
+    ...config,
+    sources: Array.from(new Set(config.sources.map(normalizeSource))) as SourceType[],
+  };
+}
 
 export async function loadConfig(): Promise<Config> {
   if (cachedConfig) return cachedConfig;
@@ -35,8 +46,8 @@ export async function loadConfig(): Promise<Config> {
   try {
     const content = await readFile(CONFIG_FILE, "utf-8");
     const parsed = JSON.parse(content) as Config;
-    cachedConfig = parsed;
-    return parsed;
+    cachedConfig = normalizeConfig(parsed);
+    return cachedConfig;
   } catch (error) {
     logger.warn(`Failed to load config: ${error}. Using defaults.`);
     cachedConfig = DEFAULT_CONFIG;
@@ -46,8 +57,9 @@ export async function loadConfig(): Promise<Config> {
 
 export async function saveConfig(config: Config): Promise<void> {
   await mkdir(COUPON_FINDER_DIR, { recursive: true });
-  await writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), "utf-8");
-  cachedConfig = config;
+  const normalized = normalizeConfig(config);
+  await writeFile(CONFIG_FILE, JSON.stringify(normalized, null, 2), "utf-8");
+  cachedConfig = normalized;
 }
 
 export async function updateConfig(

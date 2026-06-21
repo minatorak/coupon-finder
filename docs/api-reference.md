@@ -50,7 +50,7 @@ coupon-finder config --set key=value
 coupon-finder config --set pages=10
 coupon-finder config --set browser=chrome
 coupon-finder config --set parallel=false
-coupon-finder config --set sources=realdiscount,udemyxpert
+coupon-finder config --set sources=realdiscount,udemyxpert,couponami
 ```
 
 ---
@@ -74,7 +74,7 @@ coupon-finder find [OPTIONS]
 ✅ realdiscount: 45 courses
 ✅ couponscorpion: 38 courses
 ✅ udemyxpert: 52 courses
-✅ discudemy: 29 courses
+✅ couponami: 29 courses
 📊 Raw: 164 total courses
 ✨ Merged: 120 unique courses (deduplicated by URL)
 ```
@@ -221,7 +221,7 @@ sudo coupon-finder update
 ```json
 {
   "pages": 1,
-  "sources": ["realdiscount", "couponscorpion", "udemyxpert", "discudemy"],
+  "sources": ["realdiscount", "couponscorpion", "udemyxpert", "couponami"],
   "parallel": true,
   "browser": "firefox",
   "headless": true,
@@ -254,7 +254,7 @@ sudo coupon-finder update
   discount?: number              // Best discount %
   price?: number
   originalPrice?: number
-  source: "realdiscount" | "couponscorpion" | "udemyxpert" | "discudemy"
+  source: "realdiscount" | "couponscorpion" | "udemyxpert" | "couponami"
   scrapedAt: string              // ISO timestamp
   enrolled?: boolean
   claimable?: boolean
@@ -302,7 +302,7 @@ cat ~/.coupon-finder/results/claim_report_*.json
 | realdiscount.com | React SPA | MUI buttons | ✅ |
 | couponscorpion.com | Static HTML | URL params | ✅ |
 | udemyxpert.com | Dynamic | Slug-based | ✅ |
-| discudemy.com | Dynamic | Path-based | ✅ |
+| couponami.com | Dynamic | Path-based | ✅ |
 
 ---
 

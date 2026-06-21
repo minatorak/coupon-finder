@@ -129,7 +129,7 @@ dist:
 
 debug:
 	@echo "$(BLUE)Running with debug logging...$(NC)"
-	DEBUG=1 bun run src/cli.ts
+	DEBUG=1 bun run src/cli.ts find --pages 5
 
 logs:
 	@echo "$(BLUE)Application logs:$(NC)"
@@ -182,7 +182,7 @@ sources:
 	@echo "  $(GREEN)realdiscount$(NC)     - React SPA (MUI pagination)"
 	@echo "  $(GREEN)couponscorpion$(NC)   - Static HTML"
 	@echo "  $(GREEN)udemyxpert$(NC)       - Slug-based pagination"
-	@echo "  $(GREEN)discudemy$(NC)        - Path-based pagination"
+	@echo "  $(GREEN)couponami$(NC)        - Path-based pagination"
 	@echo ""
 	@echo "Test specific source:"
 	@echo "  $(BLUE)bun run src/cli.ts find --source realdiscount --pages 1$(NC)"

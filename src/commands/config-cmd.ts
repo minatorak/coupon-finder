@@ -4,8 +4,10 @@ import {
   formatConfig,
   updateConfig,
 } from "../config";
-import { Config, SourceType } from "../types";
+import { Config, SOURCE_TYPES, SourceType } from "../types";
 import { logger } from "../utils/logger";
+
+const VALID_SOURCES = new Set<string>(SOURCE_TYPES);
 
 export async function configCmd(args: string[]): Promise<void> {
   const config = await loadConfig();
@@ -23,7 +25,7 @@ export async function configCmd(args: string[]): Promise<void> {
     console.log("  coupon-finder config --set browser=chrome");
     console.log("  coupon-finder config --set parallel=false");
     console.log(
-      "  coupon-finder config --set sources=realdiscount,udemyxpert"
+      "  coupon-finder config --set sources=realdiscount,udemyxpert,couponami"
     );
     console.log();
     return;
@@ -95,13 +97,11 @@ function updateConfigField(config: Config, key: string, value: string): Config {
       const sources = value
         .split(",")
         .map((s) => s.trim())
-        .filter((s) => ["couponscorpion", "realdiscount", "udemyxpert", "discudemy"].includes(s));
+        .filter((s): s is SourceType => VALID_SOURCES.has(s));
       if (sources.length === 0) {
-        throw new Error(
-          "sources must include at least one of: couponscorpion, realdiscount, udemyxpert, discudemy"
-        );
+        throw new Error(`sources must include at least one of: ${SOURCE_TYPES.join(", ")}`);
       }
-      updated.sources = sources as SourceType[];
+      updated.sources = sources;
       break;
 
     default:
