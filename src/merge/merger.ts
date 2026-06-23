@@ -1,4 +1,4 @@
-import { Course } from "../types";
+import { Course, SourceType } from "../types";
 import { logger } from "../utils/logger";
 
 function normalizeUrl(url: string): string {
@@ -12,17 +12,34 @@ function normalizeUrl(url: string): string {
   }
 }
 
+function getCourseUrl(course: Course): string {
+  return course.udemyUrl ?? course.url ?? "";
+}
+
+function getCourseSourceType(course: Course): SourceType | undefined {
+  return course.sourceType ?? course.source;
+}
+
 export function mergeCourses(allCourses: Course[]): Course[] {
   const courseMap = new Map<string, Course>();
 
   for (const course of allCourses) {
-    const key = normalizeUrl(course.url);
+    const courseUrl = getCourseUrl(course);
+    const sourceType = getCourseSourceType(course);
+    if (!courseUrl || !sourceType) {
+      continue;
+    }
+
+    const key = normalizeUrl(courseUrl);
     const existing = courseMap.get(key);
 
     if (!existing) {
       courseMap.set(key, {
         ...course,
+        udemyUrl: key,
         url: key,
+        sourceType,
+        source: sourceType,
         couponCodes: course.couponCodes || [],
       });
     } else {
@@ -35,6 +52,10 @@ export function mergeCourses(allCourses: Course[]): Course[] {
       // Sort by discount (highest first)
       const sortedCodes = Array.from(codes);
       existing.couponCodes = sortedCodes;
+      existing.udemyUrl = key;
+      existing.url = key;
+      existing.sourceType = existing.sourceType ?? sourceType;
+      existing.source = existing.source ?? sourceType;
 
       // Update discount to best code or keep existing
       if (course.discount && (!existing.discount || course.discount > existing.discount)) {
@@ -49,7 +70,7 @@ export function mergeCourses(allCourses: Course[]): Course[] {
 export function deduplicateCourses(courses: Course[]): Course[] {
   const seen = new Set<string>();
   return courses.filter((course) => {
-    const key = normalizeUrl(course.url);
+    const key = normalizeUrl(getCourseUrl(course));
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -59,7 +80,9 @@ export function deduplicateCourses(courses: Course[]): Course[] {
 export function countBySource(courses: Course[]): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const course of courses) {
-    counts[course.source] = (counts[course.source] || 0) + 1;
+    const sourceType = course.sourceType ?? course.source;
+    if (!sourceType) continue;
+    counts[sourceType] = (counts[sourceType] || 0) + 1;
   }
   return counts;
 }

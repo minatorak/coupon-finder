@@ -39,7 +39,8 @@ coupon-finder config --set key=value
 **Settings:**
 - `pages` (integer) — Pages to scrape per source (default: 1)
 - `browser` (string) — firefox | chrome | brave (default: firefox)
-- `parallel` (boolean) — Run scrapers concurrently (default: true)
+- `sourceParallel` (boolean) — Run source scrapers concurrently (default: true)
+- `parallel` (integer) — Max course pages open at once per source (default: 4)
 - `headless` (boolean) — Run browser headless (default: true)
 - `autoOpen` (boolean) — Auto-open URLs after claim (default: false)
 - `expandCoupons` (boolean) — Discover instructor-wide coupons (default: true)
@@ -49,7 +50,8 @@ coupon-finder config --set key=value
 ```bash
 coupon-finder config --set pages=10
 coupon-finder config --set browser=chrome
-coupon-finder config --set parallel=false
+coupon-finder config --set sourceParallel=false
+coupon-finder config --set parallel=4
 coupon-finder config --set sources=realdiscount,udemyxpert,couponami
 ```
 
@@ -66,11 +68,14 @@ coupon-finder find [OPTIONS]
 **Options:**
 - `--pages N` — Override pages per source
 - `--source NAME` — Scrape specific source only
-- `--no-parallel` — Run sequentially
+- `--parallel N` — Max course pages to open at once per source
+- `--source-parallel` — Run sources in parallel
+- `--no-source-parallel` — Run sources sequentially
+- `--no-parallel` — Alias for `--no-source-parallel`
 
 **Output:**
 ```
-🔍 Scraping 4 sources (parallel)...
+🔍 Scraping 4 sources in parallel with up to 4 course pages per source...
 ✅ realdiscount: 45 courses
 ✅ couponscorpion: 38 courses
 ✅ udemyxpert: 52 courses
@@ -222,7 +227,8 @@ sudo coupon-finder update
 {
   "pages": 1,
   "sources": ["realdiscount", "couponscorpion", "udemyxpert", "couponami"],
-  "parallel": true,
+  "sourceParallel": true,
+  "parallel": 4,
   "browser": "firefox",
   "headless": true,
   "autoOpen": false,
@@ -247,14 +253,16 @@ sudo coupon-finder update
 **Course object:**
 ```typescript
 {
-  url: string                    // Unique Udemy course URL
+  udemyUrl: string               // Canonical Udemy course URL and dedupe key
   title: string
   instructor?: string
   couponCodes: string[]          // All found coupon codes
   discount?: number              // Best discount %
   price?: number
   originalPrice?: number
-  source: "realdiscount" | "couponscorpion" | "udemyxpert" | "couponami"
+  sourceType: "realdiscount" | "couponscorpion" | "udemyxpert" | "couponami"
+  url?: string                   // Legacy alias for udemyUrl
+  source?: "realdiscount" | "couponscorpion" | "udemyxpert" | "couponami"
   scrapedAt: string              // ISO timestamp
   enrolled?: boolean
   claimable?: boolean
@@ -297,12 +305,12 @@ cat ~/.coupon-finder/results/claim_report_*.json
 
 ## Supported Coupon Sources
 
-| Source | Type | Pagination | Status |
-|--------|------|-----------|--------|
-| realdiscount.com | React SPA | MUI buttons | ✅ |
-| couponscorpion.com | Static HTML | URL params | ✅ |
-| udemyxpert.com | Dynamic | Slug-based | ✅ |
-| couponami.com | Dynamic | Path-based | ✅ |
+| Source | Type | Source / course pages | Status |
+|--------|------|----------------------|--------|
+| realdiscount.com | React SPA | MUI buttons + course pages | ✅ |
+| couponscorpion.com | Static HTML | URL params + course pages | ✅ |
+| udemyxpert.com | Dynamic | Slug-based + course pages | ✅ |
+| couponami.com | Dynamic | Path-based + course pages | ✅ |
 
 ---
 
@@ -331,7 +339,7 @@ coupon-finder whoami
 
 **Scraper timeout:**
 - Automatically retries 3x
-- If still failing, run sequentially: `coupon-finder find --no-parallel`
+- If still failing, run sequentially: `coupon-finder find --no-source-parallel`
 
 **Enrollment check fails:**
 - Verify session is still valid: `coupon-finder whoami`

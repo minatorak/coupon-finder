@@ -19,6 +19,10 @@ export async function setupBrowser(
   }
 }
 
+export function mapBrowserConfig(browser: "firefox" | "chrome" | "brave"): "firefox" | "chromium" {
+  return browser === "firefox" ? "firefox" : "chromium";
+}
+
 export async function closeBrowser(browser: Browser): Promise<void> {
   await browser.close();
 }

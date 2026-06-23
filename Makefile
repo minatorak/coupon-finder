@@ -71,7 +71,7 @@ config-set:
 	@echo "Example: make config-set BROWSER=chrome"
 
 find:
-	@echo "$(BLUE)Finding courses (1 page, parallel)...$(NC)"
+	@echo "$(BLUE)Finding courses (1 page, source parallel)...$(NC)"
 	bun run src/cli.ts find --pages 1
 
 find-fast:
@@ -79,12 +79,12 @@ find-fast:
 	bun run src/cli.ts find --source realdiscount --pages 1
 
 find-all:
-	@echo "$(BLUE)Finding all courses (5 pages, parallel)...$(NC)"
+	@echo "$(BLUE)Finding all courses (5 pages, source parallel)...$(NC)"
 	bun run src/cli.ts find --pages 5
 
 find-sequential:
 	@echo "$(BLUE)Finding courses (sequential mode, lower memory)...$(NC)"
-	bun run src/cli.ts find --pages 1 --no-parallel
+	bun run src/cli.ts find --pages 1 --no-source-parallel
 
 list:
 	@echo "$(BLUE)Checking enrollment status...$(NC)"
@@ -193,7 +193,8 @@ config-help:
 	@echo ""
 	@echo "  $(GREEN)pages$(NC)          - Pages to scrape per source (default: 1)"
 	@echo "  $(GREEN)browser$(NC)        - firefox | chrome | brave (default: firefox)"
-	@echo "  $(GREEN)parallel$(NC)       - true | false (default: true)"
+	@echo "  $(GREEN)sourceParallel$(NC) - true | false (default: true)"
+	@echo "  $(GREEN)parallel$(NC)       - integer max course pages per source (default: 4)"
 	@echo "  $(GREEN)headless$(NC)       - true | false (default: true)"
 	@echo "  $(GREEN)autoOpen$(NC)       - true | false (default: false)"
 	@echo "  $(GREEN)expandCoupons$(NC)  - true | false (default: true)"
@@ -201,7 +202,8 @@ config-help:
 	@echo "Examples:"
 	@echo "  $(BLUE)make config-set pages=10$(NC)"
 	@echo "  $(BLUE)bun run src/cli.ts config --set browser=chrome$(NC)"
-	@echo "  $(BLUE)bun run src/cli.ts config --set parallel=false$(NC)"
+	@echo "  $(BLUE)bun run src/cli.ts config --set sourceParallel=false$(NC)"
+	@echo "  $(BLUE)bun run src/cli.ts config --set parallel=4$(NC)"
 
 # Health check
 health-check: type-check

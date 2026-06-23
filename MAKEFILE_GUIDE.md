@@ -8,7 +8,7 @@ The Makefile provides convenient commands for developing, testing, and running c
 make help              # Show all available commands
 make setup-dev        # Install dependencies
 make type-check       # Verify TypeScript types
-make find-fast        # Quick test: scrape 1 page
+make find-fast        # Quick test: scrape 1 source, 1 page
 ```
 
 ---
@@ -43,13 +43,17 @@ make whoami
 ### Scraping Commands
 
 ```bash
-make find             # Find courses (1 page, parallel)
+make find             # Find courses (1 page, source parallel, 4 concurrent course pages)
 make find-fast        # Quick test (1 source, 1 page)
 make find-all         # Scrape all sources (5 pages)
-make find-sequential  # Scrape sequentially (lower memory)
+make find-sequential  # Scrape sources sequentially (lower memory)
 make list             # Check enrollment status
 make claim            # Auto-claim courses
 ```
+
+The find command uses a **two-phase scrape model**:
+1. **Source pages** — scrape coupon listing pages for course seeds (title + link)
+2. **Course page resolution** — open each seed's link with bounded concurrency (`parallel: N`) to resolve the actual Udemy URL and extract coupon codes
 
 **Example Workflow:**
 ```bash
@@ -151,6 +155,8 @@ make workflow-quick
 make config                           # View current
 bun run src/cli.ts config --set pages=10
 bun run src/cli.ts config --set browser=chrome
+bun run src/cli.ts config --set sourceParallel=false
+bun run src/cli.ts config --set parallel=4
 ```
 
 ### Available Config Options
@@ -162,11 +168,14 @@ make config-help
 # Configuration Options:
 #   pages          - Pages to scrape per source (default: 1)
 #   browser        - firefox | chrome | brave (default: firefox)
-#   parallel       - true | false (default: true)
+#   sourceParallel - true | false (default: true) — run source scrapers concurrently
+#   parallel       - integer max course pages open per source (default: 4)
 #   headless       - true | false (default: true)
 #   autoOpen       - true | false (default: false)
 #   expandCoupons  - true | false (default: true)
 ```
+
+**Note:** The old `parallel` config (boolean, for source parallelism) has been replaced by `sourceParallel` (boolean) + `parallel` (integer for course page concurrency). Old configs with `"parallel": true/false` are auto-migrated on first load.
 
 ---
 

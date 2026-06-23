@@ -6,7 +6,7 @@ Coupon-finder is a command-line tool that automates discovering free Udemy cours
 
 ## Features
 
-- 🔍 **Multi-source scraping:** Scrape coupons from realdiscount, couponscorpion, udemyxpert, and couponami simultaneously
+- 🔍 **Two-stage scraping:** Scrape source pages from realdiscount, couponscorpion, udemyxpert, and couponami, then resolve course pages with configurable concurrency
 - 🔗 **Session-aware:** Reads your active Udemy browser session (Firefox, Chrome, Brave) to check enrollment status
 - 📊 **Deduplication:** Automatically merges results by course URL, keeping the best coupon code
 - 🚀 **Auto-enrollment:** Batch-enroll in courses with valid coupons
@@ -47,9 +47,9 @@ Session: valid (expires 2026-07-18)
 coupon-finder find --pages 5
 ```
 
-This scrapes 5 pages from each source in parallel and merges results:
+This scrapes 5 pages from each source, opens course pages with configurable per-source concurrency, and merges results:
 ```
-🔍 Scraping 4 sources (parallel)...
+🔍 Scraping 4 sources in parallel with up to 4 course pages per source...
   ✅ realdiscount: 45 courses
   ✅ couponscorpion: 38 courses
   ✅ udemyxpert: 52 courses
@@ -106,13 +106,17 @@ Scrape coupons from all configured sources.
 **Options:**
 - `--pages N` — number of pages per source (default: from config)
 - `--source NAME` — scrape specific source only (realdiscount, couponscorpion, udemyxpert, couponami)
-- `--no-parallel` — run sequentially instead of in parallel
+- `--parallel N` — maximum number of course pages to open at once per source
+- `--source-parallel` — run sources in parallel
+- `--no-source-parallel` — run sources sequentially instead of in parallel
+- `--no-parallel` — alias for `--no-source-parallel`
 
 **Examples:**
 ```bash
 coupon-finder find --pages 10
 coupon-finder find --source realdiscount --pages 5
-coupon-finder find --pages 3 --no-parallel
+coupon-finder find --pages 3 --no-source-parallel
+coupon-finder find --parallel 6
 ```
 
 ### `coupon-finder list`
@@ -150,7 +154,8 @@ coupon-finder config
 # Update a setting
 coupon-finder config --set pages=10
 coupon-finder config --set browser=chrome
-coupon-finder config --set parallel=false
+coupon-finder config --set sourceParallel=false
+coupon-finder config --set parallel=4
 coupon-finder config --set sources=realdiscount,udemyxpert,couponami
 ```
 
@@ -163,7 +168,8 @@ Config file: `~/.coupon-finder/config.json`
 {
   "pages": 1,
   "sources": ["realdiscount", "couponscorpion", "udemyxpert", "couponami"],
-  "parallel": true,
+  "sourceParallel": true,
+  "parallel": 4,
   "browser": "firefox",
   "headless": true,
   "autoOpen": false,
@@ -175,7 +181,8 @@ Config file: `~/.coupon-finder/config.json`
 **Fields:**
 - `pages` — pages to scrape per source (default: 1)
 - `sources` — array of sources to use
-- `parallel` — run scrapers concurrently (default: true)
+- `sourceParallel` — run source scrapers concurrently (default: true)
+- `parallel` — maximum course pages to open at once per source (default: 4)
 - `browser` — firefox, chrome, or brave
 - `headless` — run browser headless (default: true)
 - `autoOpen` — auto-open course URLs after claim (default: false)
@@ -185,11 +192,12 @@ Config file: `~/.coupon-finder/config.json`
 ## How It Works
 
 1. **Session extraction:** Reads your active browser's Udemy session cookies (Firefox, Chrome, or Brave)
-2. **Multi-source scraping:** Launches Playwright browsers to scrape each coupon source in parallel
-3. **Deduplication:** Merges results by course URL, keeping the best coupon code
-4. **Enrollment checking:** Queries Udemy API to check which courses you already have
-5. **Auto-enrollment:** Posts to Udemy's checkout API to enroll in courses with valid coupons
-6. **Cleanup:** Deletes JSON result files older than 3 days
+2. **Source-page scraping:** Opens each coupon source one page at a time and collects course-page links
+3. **Course-page resolution:** Opens course pages with the configured `parallel` limit and extracts Udemy URLs plus coupon data
+4. **Deduplication:** Merges results by course URL, keeping the best coupon code
+5. **Enrollment checking:** Queries Udemy API to check which courses you already have
+6. **Auto-enrollment:** Posts to Udemy's checkout API to enroll in courses with valid coupons
+7. **Cleanup:** Deletes JSON result files older than 3 days
 
 ## Supported Browsers
 
@@ -200,10 +208,10 @@ Config file: `~/.coupon-finder/config.json`
 
 ## Supported Coupon Sources
 
-- ✅ **realdiscount.com** — React SPA, MUI pagination
-- ✅ **couponscorpion.com** — Static HTML, URL params
-- ✅ **udemyxpert.com** — Slug-based pagination
-- ✅ **couponami.com** — Path-based pagination
+- ✅ **realdiscount.com** — React SPA, MUI buttons plus course pages
+- ✅ **couponscorpion.com** — Source pages plus course pages
+- ✅ **udemyxpert.com** — Slug-based source pages plus course pages
+- ✅ **couponami.com** — Path-based source pages plus course pages
 - 🔜 More sources can be added as plugins
 
 ## Troubleshooting

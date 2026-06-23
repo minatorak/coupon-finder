@@ -4,10 +4,13 @@ import { loadConfig } from "../config";
 import { logger } from "../utils/logger";
 
 export async function whoami(): Promise<void> {
+  let browserName = "Firefox";
+
   try {
     logger.info("Checking your Udemy login...");
 
     const config = await loadConfig();
+    browserName = config.browser.charAt(0).toUpperCase() + config.browser.slice(1);
     const cookies = await readSessionCookies(config.browser);
     const api = await createUdemyAPI(cookies.authToken);
     const user = await api.getMe();
@@ -15,7 +18,7 @@ export async function whoami(): Promise<void> {
     console.log(`
 ✅ Logged in as: ${user.name}
 ${user.email ? `📧 Email: ${user.email}` : ""}
-🌐 Browser: ${config.browser.charAt(0).toUpperCase() + config.browser.slice(1)}
+🌐 Browser: ${browserName}
 ✓ Session: valid
 
 Ready to find and claim courses!
@@ -23,8 +26,6 @@ Ready to find and claim courses!
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     logger.error(`Failed to check login: ${errorMsg}`);
-
-    const browserName = config.browser.charAt(0).toUpperCase() + config.browser.slice(1);
 
     console.log(`
 ❌ Not logged in to Udemy

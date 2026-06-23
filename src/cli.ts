@@ -37,11 +37,18 @@ async function main() {
         const options: any = {};
         for (let i = 1; i < args.length; i++) {
           if (args[i] === "--pages" && args[i + 1]) {
-            options.pages = parseInt(args[++i]);
+            options.pages = Number.parseInt(args[++i], 10);
           } else if (args[i] === "--source" && args[i + 1]) {
             options.source = args[++i];
-          } else if (args[i] === "--no-parallel") {
-            options.parallel = false;
+          } else if (args[i] === "--parallel" && args[i + 1]) {
+            options.parallel = Number.parseInt(args[++i], 10);
+          } else if (args[i] === "--source-parallel") {
+            options.sourceParallel = true;
+          } else if (
+            args[i] === "--no-source-parallel" ||
+            args[i] === "--no-parallel"
+          ) {
+            options.sourceParallel = false;
           }
         }
         await find(options);
@@ -104,11 +111,21 @@ OPTIONS:
 CLAIM OPTIONS:
   --open          Open course URLs in browser (10 at a time, press Enter between batches)
 
+FIND OPTIONS:
+  --parallel N            Max course pages open at once per source
+  --source-parallel       Scrape sources in parallel
+  --no-source-parallel    Scrape sources sequentially
+  --no-parallel           Alias for --no-source-parallel
+
 EXAMPLES:
   coupon-finder whoami
   coupon-finder config
   coupon-finder config --set pages=10
+  coupon-finder config --set sourceParallel=false
+  coupon-finder config --set parallel=4
   coupon-finder find --pages 5
+  coupon-finder find --parallel 4
+  coupon-finder find --no-source-parallel
   coupon-finder list
   coupon-finder claim
   coupon-finder claim --open

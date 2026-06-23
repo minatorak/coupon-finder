@@ -1,28 +1,34 @@
-import { ScraperPlugin, Course } from "../../types";
+import { ScraperPlugin, Course, BrowserType } from "../../types";
 import { setupBrowser, closeBrowser } from "../../utils/browser";
 import { retryWithTimeout } from "../../utils/retry";
 import { logger } from "../../utils/logger";
+import {
+  CourseSeed,
+  scrapeCoursePage,
+  withConcurrentPages,
+} from "../../utils/scraper";
 
 export class CouponamiScraper implements ScraperPlugin {
   name = "couponami" as const;
 
-  async scrape(pages: number): Promise<Course[]> {
-    const browser = await setupBrowser();
+  async scrape(pages: number, parallel: number, headless?: boolean, browser?: BrowserType): Promise<Course[]> {
+    const browserInstance = await setupBrowser(headless, browser);
     const courses: Course[] = [];
 
     try {
-      const context = await browser.newContext();
+      const context = await browserInstance.newContext();
       const page = await context.newPage();
 
       for (let pageNum = 1; pageNum <= pages; pageNum++) {
         try {
-          await retryWithTimeout(async () => {
-            logger.debug(`Scraping couponami page ${pageNum}...`);
+          const seeds = await retryWithTimeout(async () => {
+            logger.debug(`Scraping couponami source page ${pageNum}...`);
 
             const url = `https://www.couponami.com/all/${pageNum}`;
             await page.goto(url, { waitUntil: "networkidle" });
 
             const courseElements = await page.locator(".course").all();
+            const seedCourses: CourseSeed[] = [];
 
             for (const el of courseElements) {
               try {
@@ -37,37 +43,47 @@ export class CouponamiScraper implements ScraperPlugin {
                 const price = await el.locator(".price").textContent();
 
                 if (title && link) {
-                  courses.push({
-                    url: await this.resolveUrl(link.trim()),
+                  seedCourses.push({
+                    coursePageUrl: new URL(link.trim(), url).href,
                     title: title.trim(),
-                    couponCodes: [],
                     discount: price === "FREE" ? 100 : undefined,
-                    source: "couponami",
-                    scrapedAt: new Date(),
                   });
                 }
               } catch (error) {
-                logger.debug(`Failed to scrape course element: ${error}`);
+                logger.debug(`Failed to scrape couponami course seed: ${error}`);
               }
             }
 
-            logger.info(`couponami page ${pageNum}: ${courseElements.length} courses`);
+            logger.info(
+              `couponami source page ${pageNum}: ${seedCourses.length} course pages`
+            );
+
+            return seedCourses;
           });
+
+          const resolvedCourses = await withConcurrentPages(
+            context,
+            seeds,
+            parallel,
+            async (coursePage, seed) =>
+              retryWithTimeout(
+                () => scrapeCoursePage(coursePage, seed, this.name),
+                3,
+                5000
+              )
+          );
+
+          courses.push(...resolvedCourses);
         } catch (error) {
-          logger.warn(`Failed to scrape page ${pageNum}: ${error}`);
+          logger.warn(`Failed to scrape couponami source page ${pageNum}: ${error}`);
         }
       }
 
       await context.close();
     } finally {
-      await closeBrowser(browser);
+      await closeBrowser(browserInstance);
     }
 
     return courses;
   }
-
-  private async resolveUrl(couponamiUrl: string): Promise<string> {
-    return couponamiUrl;
-  }
 }
-

@@ -3,14 +3,23 @@ import { getScraperPlugins } from "../plugins/registry";
 import { mergeCourses, countBySource } from "../merge/merger";
 import { saveResults } from "../storage/results";
 import { cleanupOldResults } from "../storage/cleanup";
-import { retryWithTimeout } from "../utils/retry";
 import { logger } from "../utils/logger";
-import { SourceType } from "../types";
+import { mapBrowserConfig } from "../utils/browser";
+import { Course, SourceType } from "../types";
 
 interface FindOptions {
   pages?: number;
   source?: SourceType;
-  parallel?: boolean;
+  sourceParallel?: boolean;
+  parallel?: number;
+}
+
+function normalizePositiveInt(value: number | undefined, fallback: number): number {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 1) {
+    return Math.floor(value);
+  }
+
+  return fallback;
 }
 
 export async function find(options: FindOptions = {}): Promise<void> {
@@ -18,20 +27,27 @@ export async function find(options: FindOptions = {}): Promise<void> {
     await cleanupOldResults();
 
     const config = await loadConfig();
-    const pages = options.pages || config.pages;
-    const parallel = options.parallel !== undefined ? options.parallel : config.parallel;
+    const pages = normalizePositiveInt(options.pages, config.pages);
+    const sourceParallel =
+      options.sourceParallel !== undefined
+        ? options.sourceParallel
+        : config.sourceParallel;
+    const parallel = normalizePositiveInt(options.parallel, config.parallel);
     const sources = options.source ? [options.source] : config.sources;
+    const sourceLabel = sources.length === 1 ? "source" : "sources";
 
-    logger.info(`🔍 Scraping ${sources.length} source(s)${parallel ? " (parallel)" : " (sequential)"}...`);
+    logger.info(
+      `🔍 Scraping ${sources.length} ${sourceLabel}${sourceParallel ? " in parallel" : " sequentially"} with up to ${parallel} course page(s) per source...`
+    );
 
     const scrapers = getScraperPlugins(sources);
-    let allCourses: any[] = [];
+    let allCourses: Course[] = [];
 
-    if (parallel) {
-      // Run all scrapers in parallel
+    if (sourceParallel) {
+      const browserType = mapBrowserConfig(config.browser);
       const results = await Promise.allSettled(
         scrapers.map((scraper) =>
-          retryWithTimeout(() => scraper.scrape(pages), 3, 5000)
+          scraper.scrape(pages, parallel, config.headless, browserType)
         )
       );
 
@@ -47,13 +63,13 @@ export async function find(options: FindOptions = {}): Promise<void> {
         }
       }
     } else {
-      // Run scrapers sequentially
+      const browserType = mapBrowserConfig(config.browser);
       for (let i = 0; i < scrapers.length; i++) {
         const scraper = scrapers[i];
         const source = sources[i];
 
         try {
-          const courses = await retryWithTimeout(() => scraper.scrape(pages), 3, 5000);
+          const courses = await scraper.scrape(pages, parallel, config.headless, browserType);
           logger.info(`✅ ${source}: ${courses.length} courses`);
           allCourses.push(...courses);
         } catch (error) {

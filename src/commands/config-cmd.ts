@@ -2,7 +2,6 @@ import {
   loadConfig,
   saveConfig,
   formatConfig,
-  updateConfig,
 } from "../config";
 import { Config, SOURCE_TYPES, SourceType } from "../types";
 import { logger } from "../utils/logger";
@@ -23,7 +22,8 @@ export async function configCmd(args: string[]): Promise<void> {
     console.log("Examples:");
     console.log("  coupon-finder config --set pages=10");
     console.log("  coupon-finder config --set browser=chrome");
-    console.log("  coupon-finder config --set parallel=false");
+    console.log("  coupon-finder config --set sourceParallel=false");
+    console.log("  coupon-finder config --set parallel=4");
     console.log(
       "  coupon-finder config --set sources=realdiscount,udemyxpert,couponami"
     );
@@ -63,7 +63,7 @@ function updateConfigField(config: Config, key: string, value: string): Config {
 
   switch (key) {
     case "pages":
-      const pages = parseInt(value);
+      const pages = Number.parseInt(value, 10);
       if (isNaN(pages) || pages < 1) {
         throw new Error("pages must be a positive integer");
       }
@@ -77,8 +77,16 @@ function updateConfigField(config: Config, key: string, value: string): Config {
       updated.browser = value as "firefox" | "chrome" | "brave";
       break;
 
+    case "sourceParallel":
+      updated.sourceParallel = parseBoolean(value);
+      break;
+
     case "parallel":
-      updated.parallel = parseBoolean(value);
+      const coursePageParallel = Number.parseInt(value, 10);
+      if (isNaN(coursePageParallel) || coursePageParallel < 1) {
+        throw new Error("parallel must be a positive integer");
+      }
+      updated.parallel = coursePageParallel;
       break;
 
     case "headless":

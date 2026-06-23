@@ -17,6 +17,10 @@ function extractCourseId(url: string): string | null {
   return null;
 }
 
+function getCourseUrl(course: Course): string {
+  return course.udemyUrl ?? course.url ?? "";
+}
+
 export async function checkEnrollment(
   courses: Course[],
   api: UdemyAPI
@@ -30,7 +34,8 @@ export async function checkEnrollment(
 
     try {
       // Extract course ID from Udemy URL
-      const courseId = extractCourseId(course.url);
+      const courseUrl = getCourseUrl(course);
+      const courseId = extractCourseId(courseUrl);
       if (!courseId) {
         course.claimable = false;
         continue;
@@ -78,7 +83,8 @@ export async function claimCourses(
 
   for (const course of claimable) {
     try {
-      const courseId = extractCourseId(course.url);
+      const courseUrl = getCourseUrl(course);
+      const courseId = extractCourseId(courseUrl);
       if (!courseId) throw new Error("Could not extract course ID");
 
       // Try to enroll (simplified - would need full API implementation)
@@ -86,7 +92,7 @@ export async function claimCourses(
       success++;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      errors[course.url] = msg;
+      errors[getCourseUrl(course)] = msg;
       failed++;
       logger.warn(`❌ ${course.title}: ${msg}`);
     }

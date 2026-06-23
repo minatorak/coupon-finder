@@ -4,10 +4,11 @@
 
 coupon-finder is a CLI tool built with Bun + TypeScript that:
 1. Reads Udemy browser sessions (Firefox, Chrome, Brave)
-2. Scrapes coupon data from 4 sources in parallel
-3. Deduplicates and merges results by URL
-4. Checks enrollment status via Udemy API
-5. Auto-enrolls in available courses
+2. Scrapes source pages from 4 coupon sites
+3. Opens course pages with configurable concurrency to resolve Udemy URLs and coupon codes
+4. Deduplicates and merges results by URL
+5. Checks enrollment status via Udemy API
+6. Auto-enrolls in available courses
 
 ## Design Principles
 
@@ -24,9 +25,9 @@ Browser Session
       ↓
 UdemyAPI (auth check)
       ↓
-[Realdiscount] [Couponscorpion] [Udemyxpert] [Couponami]
-      ↓              ↓                 ↓            ↓
-   Courses        Courses           Courses      Courses
+[Source pages] → [Course pages xN]   [Source pages] → [Course pages xN]
+      ↓                    ↓               ↓                    ↓
+   Course data         Course data     Course data         Course data
       ↓
 Merge by URL (collect coupon codes)
       ↓
@@ -53,7 +54,7 @@ JSON Reports
 - Support: Firefox, Chrome, Brave
 
 **Scrapers** (`src/plugins/scrapers/`)
-- Playwright-based page scraping
+- Playwright-based source-page scraping plus course-page resolution
 - 4 sources: realdiscount, couponscorpion, udemyxpert, couponami
 - Configurable retry logic (3x, 5s max)
 
@@ -76,7 +77,8 @@ JSON Reports
 {
   "pages": 1,                    // Pages to scrape per source
   "sources": [...],              // Active sources
-  "parallel": true,              // Run scrapers concurrently
+  "sourceParallel": true,        // Run source scrapers concurrently
+  "parallel": 4,                 // Max course pages open at once per source
   "browser": "firefox",          // Browser for session
   "headless": true,              // Run Playwright headless
   "autoOpen": false,             // Auto-open URLs after claim
@@ -96,7 +98,8 @@ JSON Reports
 
 - Playwright runs headless (no UI overhead)
 - Images disabled in browser (save bandwidth)
-- Scrapers run in parallel (by default)
+- Source scrapers run in parallel by default
+- Course pages open with bounded concurrency
 - 3-day result file cleanup (manage disk)
 - Retry logic with exponential backoff (graceful failures)
 

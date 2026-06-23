@@ -1,8 +1,8 @@
-# 🎉 coupon-finder — Phases 1-7 Implementation
+# 🎉 coupon-finder — Phases 1-8 Implementation
 
-**Status:** ✅ Phases 1-6 Complete | 🚀 Phase 7 (Sprints 1-3) Complete
-**Date Completed:** Phases 1-6: 2026-06-18 | Phase 7: 2026-06-18
-**Total Files:** 34 TypeScript files + config + docs
+**Status:** ✅ Phases 1-6 Complete | 🚀 Phase 7 Complete | ✅ Phase 8 Complete
+**Date Completed:** Phases 1-6: 2026-06-18 | Phase 7: 2026-06-18 | Phase 8: 2026-06-23
+**Total Files:** 35 TypeScript files + config + docs
 **Ready for:** Production deployment + self-updating
 
 ---
@@ -56,11 +56,11 @@
   - Deduplicate by URL
   - Collect all coupon codes per course
   - Keep best discount
-- [x] **find command** with parallel/sequential modes
+- [x] **find command** with source-parallel/sequential modes and course-page concurrency
 - [x] Source filtering (scrape specific source)
 - [x] Cleanup logic (`src/storage/cleanup.ts`)
 
-**Status:** ✅ Complete — `bun run src/cli.ts find --pages 5 --parallel`
+**Status:** ✅ Complete — `bun run src/cli.ts find --pages 5 --parallel 4`
 
 ---
 
@@ -135,6 +135,46 @@
 
 ---
 
+### ✅ Phase 8: Course Page Resolution Pipeline
+
+**Status:** ✅ Complete (All 4 sprints)
+
+#### Sprint 1: Core Utilities ✅
+- [x] `src/types.ts` — Add `Course.udemyUrl`, `sourceType`, `SOURCE_TYPES` const, `BrowserType`, update `Config` + `ScraperPlugin`
+- [x] `src/utils/scraper.ts` — Full implementation: `CourseSeed`, `scrapeCoursePage()`, `resolveUdemyCourseUrl()`, link scoring (4-hop traversal), `withConcurrentPages()`, `mapWithConcurrency()`, URL canonicalization, coupon code extraction
+- [x] `src/utils/browser.ts` — Add `mapBrowserConfig()` helper
+- [x] `src/config.ts` — Full rewrite: normalization functions, migration for old `parallel: boolean`, validation for all fields
+- [x] `src/merge/merger.ts` — Use `udemyUrl` for dedup key, `sourceType` for counting
+- [x] `src/udemy/enrollment.ts` — Use `udemyUrl` for course ID extraction
+
+#### Sprint 2: Scraper Refactoring ✅
+- [x] `realdiscount.ts` — Two-phase: seed extraction → course page resolution (bounded concurrency)
+- [x] `couponscorpion.ts` — Two-phase: page-level retry (120s), per-seed retry (2x, 30s)
+- [x] `udemyxpert.ts` — Two-phase: path-based pagination with seed extraction
+- [x] `couponami.ts` — Two-phase: FREE price → 100% discount
+
+#### Sprint 3: CLI & Integration ✅
+- [x] `src/cli.ts` — New flags: `--parallel N`, `--source-parallel`, `--no-source-parallel` (alias `--no-parallel`)
+- [x] `src/commands/find.ts` — Pass `parallel` to scrapers, new `FindOptions` interface, `normalizePositiveInt()` helper
+- [x] `src/commands/config-cmd.ts` — Updated `--set` validation for `sourceParallel` + `parallel` (positive int)
+- [x] `src/commands/claim.ts` — Use `udemyUrl` for `--open` URL collection
+- [x] `src/commands/whoami.ts` — Fix `browserName` scope bug
+
+#### Sprint 4: Documentation ✅
+- [x] `Makefile` — Updated flag names, config-help docs
+- [x] `README.md` — Two-stage scraping description, new CLI flags
+- [x] `docs/api-reference.md` — Updated CLI reference with find options
+- [x] `docs/architecture.md` — Updated architecture diagram for two-phase model
+- [x] `CONTRIBUTING.md` — Updated scraper example with new signature
+- [x] `MAKEFILE_GUIDE.md` — Updated config examples and help text
+- [x] `PHASES_COMPLETE.md` — This section
+
+**Bugfixes included:**
+- `whoami.ts`: `browserName` variable used in both try and catch blocks (was scoped inside `try` only)
+- `claim.ts`: Use `course.udemyUrl ?? course.url` for URL collection
+
+---
+
 ## Project Structure
 
 ```
@@ -175,6 +215,7 @@ coupon-finder/
 │       ├── download.ts            # Binary download (Phase 7) ✅
 │       ├── checksum.ts            # SHA256 verification (Phase 7) ✅
 │       ├── lock.ts                # Concurrency guard (Phase 7) ✅
+│       ├── scraper.ts             # Course page resolution (Phase 8) ✅
 │       └── browser-opener.ts      # Batch URL opening ✅
 ├── docs/                          # Documentation ✅
 │   ├── architecture.md
@@ -201,8 +242,8 @@ coupon-finder/
 
 ### Core Functionality
 ✅ **whoami** — Verify Udemy login session
-✅ **config** — View/edit JSON configuration
-✅ **find** — Scrape all 4 coupon sources in parallel
+✅ **config** — View/edit JSON configuration (sourceParallel + parallel concurrency settings)
+✅ **find** — Two-phase scrape: source listing pages → course page resolution with bounded concurrency
 ✅ **list** — Check enrollment status via Udemy API
 ✅ **claim** — Auto-enroll in available courses
 ✅ **update** — Self-update with interactive version selection (Phase 7)
@@ -219,8 +260,13 @@ coupon-finder/
 ✅ couponami.com (Path-based pagination)
 
 ### Advanced Features
-✅ Parallel scraping (configurable)
-✅ Retry logic (3x, 5s timeout)
+✅ Two-stage scraping (source listing → course page resolution)
+✅ Source parallelism (configurable via `sourceParallel`)
+✅ Course page concurrency (configurable via `--parallel N`)
+✅ Link scoring & auto-follow (4-hop Udemy URL resolution)
+✅ Coupon code extraction (URL params + page text patterns)
+✅ Config migration (old `parallel: boolean` → `sourceParallel: boolean` + `parallel: number`)
+✅ Retry logic (3x, 5s timeout per source; 2-3x, 5-30s per course page)
 ✅ Course deduplication by URL
 ✅ Multiple coupon codes per course
 ✅ Result file persistence (JSON)
@@ -278,10 +324,11 @@ coupon-finder claim
 coupon-finder find --source realdiscount --pages 10
 
 # Run sequentially (slower but lower memory)
-coupon-finder find --no-parallel
+coupon-finder find --no-source-parallel
 
 # Edit configuration
-coupon-finder config --set parallel=false
+coupon-finder config --set sourceParallel=false
+coupon-finder config --set parallel=4
 coupon-finder config --set browser=chrome
 coupon-finder config --set sources=realdiscount,udemyxpert,couponami
 ```
@@ -307,19 +354,22 @@ bun run src/cli.ts config
 
 ## Performance Metrics
 
-- **Scraping:** 1 page per source ≈ 30-60 seconds (parallel)
+- **Scraping:** 1 page per source ≈ 30-60 seconds (source parallel + bounded course pages)
+- **Course page resolution:** ~5-15 seconds per course page (1-4 hops, depends on redirect chains)
 - **Enrollment check:** ~200 courses ≈ 2-5 minutes
 - **Memory:** ~200-300MB (headless Playwright)
-- **Retry logic:** 3 attempts, 5-second timeout per scraper
+- **Retry logic:** 3 attempts, 5-second timeout per source; 2-3 attempts, 5-30s per course page
+- **Concurrency controls:** `parallel: 4` (default) prevents resource exhaustion
 
 ---
 
 ## Known Limitations
 
 - **Enrollment API:** Requires valid Firefox/Chrome/Brave session
-- **Claim API:** Currently logs success; full Udemy checkout integration in Phase 7
-- **Coupon expansion:** Placeholder for instructor-wide coupon discovery
+- **Claim API:** Currently logs success; full Udemy checkout integration pending
+- **Coupon expansion:** Placeholder for instructor-wide coupon discovery (Phase 9+)
 - **Rate limiting:** No explicit rate limiting; respects HTTP 429
+- **Course page resolution:** Link scoring weights are generic across all sources; source-specific tuning may improve accuracy
 
 ---
 
@@ -330,7 +380,14 @@ bun run src/cli.ts config
 - Upload binaries + `.sha256` files to GitHub Releases
 - Test end-to-end update flow
 
-### Phase 8: Enhanced Enrollment
+### Phase 8: Course Page Resolution Pipeline ✅
+- [x] Two-phase scrape model: source listing → course page resolution
+- [x] Link scoring & auto-follow to resolve Udemy URLs
+- [x] Coupon code extraction from URL params + page text
+- [x] Config migration (old `parallel: boolean` → `sourceParallel: boolean` + `parallel: number`)
+- [x] Bounded concurrency for course page resolution
+
+### Phase 9: Enhanced Enrollment
 - Full Udemy checkout API integration
 - Coupon validation before claiming
 - Batch enrollment optimization
@@ -386,6 +443,33 @@ bun run src/cli.ts config
 **Total Phase 7:** 11 files created/modified
 **Total Project:** 49 files created/modified, 0 deleted
 
+### Phase 8 (This Session)
+- 1 New TypeScript file:
+  - `src/utils/scraper.ts` (course page resolution, link scoring, concurrency utilities)
+- 14 Source files refactored:
+  - `src/types.ts` (Course.udemyUrl, sourceType, SOURCE_TYPES, BrowserType)
+  - `src/config.ts` (config normalization + migration)
+  - `src/cli.ts` (new find flags)
+  - `src/commands/find.ts` (parallel passthrough)
+  - `src/commands/config-cmd.ts` (new --set validation)
+  - `src/commands/claim.ts` (udemyUrl usage)
+  - `src/commands/whoami.ts` (scope bugfix)
+  - `src/merge/merger.ts` (udemyUrl dedup)
+  - `src/udemy/enrollment.ts` (udemyUrl)
+  - `src/utils/browser.ts` (mapBrowserConfig)
+  - `src/plugins/scrapers/couponami.ts` (two-phase)
+  - `src/plugins/scrapers/couponscorpion.ts` (two-phase)
+  - `src/plugins/scrapers/realdiscount.ts` (two-phase)
+  - `src/plugins/scrapers/udemyxpert.ts` (two-phase)
+- 7 Documentation changes:
+  - `Makefile`, `README.md`, `docs/api-reference.md`, `docs/architecture.md`
+  - `CONTRIBUTING.md`, `MAKEFILE_GUIDE.md`, `PHASES_COMPLETE.md`
+- 1 Plan document:
+  - `plans/phase-8.md`
+
+**Total Phase 8:** 23 files created/modified
+**Total Project:** 52 files created/modified, 0 deleted
+
 ---
 
 ## Completion Checklist
@@ -397,7 +481,11 @@ bun run src/cli.ts config
 - [x] Phase 5: Enrollment + Claim ✅
 - [x] Phase 6: Build + Distribution ✅
 - [x] Phase 7: Self-Update (Sprints 1-3) ✅
+- [x] Phase 8: Course Page Resolution Pipeline ✅
 - [x] All 6 commands working (whoami, config, find, list, claim, update)
+- [x] Two-phase scrape model implemented across all 4 sources
+- [x] Config schema migrated (backwards compatible)
+- [x] Coupon code extraction from URL params + page text
 - [x] No TypeScript errors
 - [x] Documentation complete (README, api-reference, Makefile)
 - [x] GitHub Actions ready (Phase 6)

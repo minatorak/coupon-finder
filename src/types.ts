@@ -1,30 +1,36 @@
 // All TypeScript interfaces for coupon-finder
 
+export const SOURCE_TYPES = [
+  "couponscorpion",
+  "realdiscount",
+  "udemyxpert",
+  "couponami",
+] as const;
+
+export type SourceType = (typeof SOURCE_TYPES)[number];
+
 export interface Course {
-  url: string;
+  udemyUrl: string;
   title: string;
-  instructor?: string;
   couponCodes: string[];
+  sourceType: SourceType;
+  scrapedAt: Date;
+  url?: string;
+  source?: SourceType;
+  instructor?: string;
   discount?: number;
   price?: number;
   originalPrice?: number;
-  source: SourceType;
-  scrapedAt: Date;
   enrolled?: boolean;
   claimable?: boolean;
   claimError?: string;
 }
 
-export type SourceType =
-  | "couponscorpion"
-  | "realdiscount"
-  | "udemyxpert"
-  | "couponami"
-
 export interface Config {
   pages: number;
   sources: SourceType[];
-  parallel: boolean;
+  sourceParallel: boolean;
+  parallel: number;
   browser: "firefox" | "chrome" | "brave";
   headless: boolean;
   autoOpen: boolean;
@@ -39,9 +45,11 @@ export interface BrowserPlugin {
   findSessionFile(): Promise<string>;
 }
 
+export type BrowserType = "firefox" | "chromium";
+
 export interface ScraperPlugin {
   name: SourceType;
-  scrape(pages: number): Promise<Course[]>;
+  scrape(pages: number, parallel: number, headless?: boolean, browser?: BrowserType): Promise<Course[]>;
 }
 
 export interface UdemySession {

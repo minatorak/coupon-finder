@@ -67,8 +67,8 @@ export async function claim(options?: { open?: boolean }): Promise<void> {
     // Collect URLs from successfully claimed courses
     const claimedUrls = claimable
       .filter((c) => !c.claimError)
-      .map((c) => c.url)
-      .filter((url) => url !== undefined);
+      .map((c) => c.udemyUrl ?? c.url)
+      .filter((url): url is string => Boolean(url));
 
     // Save claim report
     const report = {
