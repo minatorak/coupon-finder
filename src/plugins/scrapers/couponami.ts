@@ -1,17 +1,29 @@
-import { ScraperPlugin, Course, BrowserType } from "../../types";
-import { setupBrowser, closeBrowser } from "../../utils/browser";
-import { retryWithTimeout } from "../../utils/retry";
+import { BrowserType, Course, ScraperPlugin } from "../../types";
+import { closeBrowser, setupBrowser } from "../../utils/browser";
 import { logger } from "../../utils/logger";
+import { retryWithTimeout } from "../../utils/retry";
 import {
+  canonicalizeUdemyUrl,
   CourseSeed,
-  scrapeCoursePage,
+  extractCouponCodes,
   withConcurrentPages,
 } from "../../utils/scraper";
+import { Page } from "playwright";
+
+const BASE_URL = "https://www.couponami.com/all";
+const COURSE_LINK_SELECTOR = "article.ui.cards section.card a.card-header[href]";
+const TAKE_COURSE_SELECTOR = "a.discBtn[href]";
+const UDEMY_COURSE_SELECTOR = 'a[href*="udemy.com/course/"]';
 
 export class CouponamiScraper implements ScraperPlugin {
   name = "couponami" as const;
 
-  async scrape(pages: number, parallel: number, headless?: boolean, browser?: BrowserType): Promise<Course[]> {
+  async scrape(
+    pages: number,
+    parallel: number,
+    headless?: boolean,
+    browser?: BrowserType,
+  ): Promise<Course[]> {
     const browserInstance = await setupBrowser(headless, browser);
     const courses: Course[] = [];
 
@@ -21,61 +33,27 @@ export class CouponamiScraper implements ScraperPlugin {
 
       for (let pageNum = 1; pageNum <= pages; pageNum++) {
         try {
-          const seeds = await retryWithTimeout(async () => {
-            logger.debug(`Scraping couponami source page ${pageNum}...`);
-
-            const url = `https://www.couponami.com/all/${pageNum}`;
-            await page.goto(url, { waitUntil: "networkidle" });
-
-            const courseElements = await page.locator(".course").all();
-            const seedCourses: CourseSeed[] = [];
-
-            for (const el of courseElements) {
-              try {
-                const isGiveaway = await el
-                  .locator(".giveaway-badge")
-                  .isVisible()
-                  .catch(() => false);
-                if (isGiveaway) continue;
-
-                const title = await el.locator(".title").textContent();
-                const link = await el.locator("a").getAttribute("href");
-                const price = await el.locator(".price").textContent();
-
-                if (title && link) {
-                  seedCourses.push({
-                    coursePageUrl: new URL(link.trim(), url).href,
-                    title: title.trim(),
-                    discount: price === "FREE" ? 100 : undefined,
-                  });
-                }
-              } catch (error) {
-                logger.debug(`Failed to scrape couponami course seed: ${error}`);
-              }
-            }
-
-            logger.info(
-              `couponami source page ${pageNum}: ${seedCourses.length} course pages`
-            );
-
-            return seedCourses;
-          });
+          const seeds = await retryWithTimeout(
+            () => this.pagination(page, pageNum),
+            3,
+            30000,
+          );
 
           const resolvedCourses = await withConcurrentPages(
             context,
             seeds,
             parallel,
-            async (coursePage, seed) =>
+            (coursePage, seed) =>
               retryWithTimeout(
-                () => scrapeCoursePage(coursePage, seed, this.name),
-                3,
-                5000
-              )
+                () => this.fetchCourse(coursePage, seed),
+                2,
+                30000,
+              ),
           );
 
           courses.push(...resolvedCourses);
         } catch (error) {
-          logger.warn(`Failed to scrape couponami source page ${pageNum}: ${error}`);
+          logger.warn(`couponami page ${pageNum} failed: ${error}`);
         }
       }
 
@@ -84,6 +62,89 @@ export class CouponamiScraper implements ScraperPlugin {
       await closeBrowser(browserInstance);
     }
 
+    logger.info(`couponami: ${courses.length} courses total`);
     return courses;
+  }
+
+  private async pagination(page: Page, pageNum: number): Promise<CourseSeed[]> {
+    const url = pageNum === 1 ? BASE_URL : `${BASE_URL}/${pageNum}`;
+
+    logger.debug(`couponami page ${pageNum}: ${url}`);
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.waitForSelector(COURSE_LINK_SELECTOR, { timeout: 30000 });
+
+    const courseLinks = await page.locator(COURSE_LINK_SELECTOR).all();
+    const seeds: CourseSeed[] = [];
+
+    for (const courseLink of courseLinks) {
+      try {
+        const [title, href] = await Promise.all([
+          courseLink.textContent(),
+          courseLink.getAttribute("href"),
+        ]);
+        if (title && href) {
+          seeds.push({
+            coursePageUrl: new URL(href.trim(), url).href,
+            title: title.trim(),
+          });
+        }
+      } catch (error) {
+        logger.debug(`couponami seed extract failed: ${error}`);
+      }
+    }
+
+    logger.info(`couponami page ${pageNum}: ${seeds.length} courses`);
+    return seeds;
+  }
+
+  private async fetchCourse(
+    coursePage: Page,
+    seed: CourseSeed,
+  ): Promise<Course | null> {
+    try {
+      await coursePage.goto(seed.coursePageUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 20000,
+      });
+
+      const takeCourseHref = await coursePage
+        .locator(TAKE_COURSE_SELECTOR)
+        .first()
+        .getAttribute("href");
+      if (!takeCourseHref) {
+        logger.debug(`couponami: no Take Course link for ${seed.title}`);
+        return null;
+      }
+
+      await coursePage.goto(new URL(takeCourseHref, coursePage.url()).href, {
+        waitUntil: "domcontentloaded",
+        timeout: 20000,
+      });
+
+      const udemyCourseHref = await coursePage
+        .locator(UDEMY_COURSE_SELECTOR)
+        .first()
+        .getAttribute("href");
+      if (!udemyCourseHref) {
+        logger.debug(`couponami: no Udemy link for ${seed.title}`);
+        return null;
+      }
+
+      const resolvedUrl = new URL(udemyCourseHref, coursePage.url()).href;
+      const udemyUrl = canonicalizeUdemyUrl(resolvedUrl);
+
+      return {
+        udemyUrl,
+        url: udemyUrl,
+        title: seed.title,
+        couponCodes: extractCouponCodes(resolvedUrl),
+        sourceType: this.name,
+        source: this.name,
+        scrapedAt: new Date(),
+      };
+    } catch (error) {
+      logger.debug(`couponami fetch failed for ${seed.title}: ${error}`);
+      return null;
+    }
   }
 }

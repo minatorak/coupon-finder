@@ -1,6 +1,11 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
-import { CONFIG_FILE, COUPON_FINDER_DIR, RESULTS_DIR } from "./utils/paths";
+import {
+  CONFIG_FILE,
+  COUPON_FINDER_DIR,
+  LEGACY_CONFIG_FILE,
+  RESULTS_DIR,
+} from "./utils/paths";
 import { Config, SOURCE_TYPES, SourceType } from "./types";
 import { logger } from "./utils/logger";
 
@@ -17,7 +22,6 @@ const DEFAULT_CONFIG: Config = {
   parallel: 4,
   browser: "firefox",
   headless: true,
-  autoOpen: false,
   expandCoupons: true,
   resultsDir: RESULTS_DIR,
 };
@@ -82,7 +86,6 @@ function normalizeConfig(config: ConfigInput): Config {
     parallel,
     browser: normalizeBrowser(config.browser),
     headless: normalizeBoolean(config.headless, DEFAULT_CONFIG.headless),
-    autoOpen: normalizeBoolean(config.autoOpen, DEFAULT_CONFIG.autoOpen),
     expandCoupons: normalizeBoolean(
       config.expandCoupons,
       DEFAULT_CONFIG.expandCoupons
@@ -94,6 +97,72 @@ function normalizeConfig(config: ConfigInput): Config {
   };
 }
 
+/** Returns a new copy so callers can safely use it as an editable draft. */
+export function getDefaultConfig(): Config {
+  return { ...DEFAULT_CONFIG, sources: [...DEFAULT_CONFIG.sources] };
+}
+
+/** Whether the user has previously saved either the current or legacy config. */
+export function configExists(): boolean {
+  return existsSync(CONFIG_FILE) || existsSync(LEGACY_CONFIG_FILE);
+}
+
+function stripTomlComment(line: string): string {
+  let quoted = false;
+  let escaped = false;
+
+  for (let index = 0; index < line.length; index++) {
+    const character = line[index];
+    if (character === '"' && !escaped) quoted = !quoted;
+    if (character === "#" && !quoted) return line.slice(0, index);
+    escaped = character === "\\" && !escaped;
+    if (character !== "\\") escaped = false;
+  }
+
+  return line;
+}
+
+function parseTomlValue(value: string): unknown {
+  const trimmed = value.trim();
+
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+  if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
+  if (trimmed.startsWith('"') || trimmed.startsWith("[")) {
+    return JSON.parse(trimmed);
+  }
+
+  throw new Error(`Unsupported TOML value: ${trimmed}`);
+}
+
+function parseToml(content: string): ConfigInput {
+  const parsed: Record<string, unknown> = {};
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = stripTomlComment(rawLine).trim();
+    if (!line) continue;
+
+    const separator = line.indexOf("=");
+    if (separator === -1) {
+      throw new Error(`Invalid TOML line: ${rawLine}`);
+    }
+
+    const key = line.slice(0, separator).trim();
+    if (!key) throw new Error(`Missing TOML key: ${rawLine}`);
+    parsed[key] = parseTomlValue(line.slice(separator + 1));
+  }
+
+  return parsed as ConfigInput;
+}
+
+function quoteToml(value: string): string {
+  return JSON.stringify(value);
+}
+
+function serializeToml(config: Config): string {
+  return `# Number of pages to scrape from each enabled coupon source.\npages = ${config.pages}\n\n# Coupon sources to scrape. Remove a source to skip it.\nsources = [${config.sources.map(quoteToml).join(", ")}]\n\n# Scrape all enabled sources at the same time.\nsourceParallel = ${config.sourceParallel}\n\n# Maximum course pages to open concurrently for each source.\nparallel = ${config.parallel}\n\n# Browser used to read your logged-in Udemy session (firefox, chrome, or brave).\nbrowser = ${quoteToml(config.browser)}\n\n# Run the installed system browser without showing a window.\nheadless = ${config.headless}\n\n# Look for instructor-wide coupons in addition to course-specific coupons.\nexpandCoupons = ${config.expandCoupons}\n\n# Directory where scraped and checked course results are stored.\nresultsDir = ${quoteToml(config.resultsDir)}\n`;
+}
+
 export async function loadConfig(): Promise<Config> {
   if (cachedConfig) return cachedConfig;
 
@@ -101,30 +170,43 @@ export async function loadConfig(): Promise<Config> {
   await mkdir(COUPON_FINDER_DIR, { recursive: true });
   await mkdir(RESULTS_DIR, { recursive: true });
 
-  if (!existsSync(CONFIG_FILE)) {
+  if (!existsSync(CONFIG_FILE) && !existsSync(LEGACY_CONFIG_FILE)) {
     logger.info(
       `Creating default config at ${CONFIG_FILE}`
     );
-    await saveConfig(DEFAULT_CONFIG);
-    return DEFAULT_CONFIG;
+    const config = getDefaultConfig();
+    await saveConfig(config);
+    return config;
   }
 
   try {
-    const content = await readFile(CONFIG_FILE, "utf-8");
-    const parsed = JSON.parse(content) as ConfigInput;
+    const hasTomlConfig = existsSync(CONFIG_FILE);
+    const content = await readFile(
+      hasTomlConfig ? CONFIG_FILE : LEGACY_CONFIG_FILE,
+      "utf-8"
+    );
+    const parsed = hasTomlConfig
+      ? parseToml(content)
+      : (JSON.parse(content) as ConfigInput);
     cachedConfig = normalizeConfig(parsed);
+
+    if (!hasTomlConfig) {
+      await saveConfig(cachedConfig);
+      logger.info(`Migrated legacy config to ${CONFIG_FILE}`);
+    }
+
     return cachedConfig;
   } catch (error) {
     logger.warn(`Failed to load config: ${error}. Using defaults.`);
-    cachedConfig = DEFAULT_CONFIG;
-    return DEFAULT_CONFIG;
+    cachedConfig = getDefaultConfig();
+    return cachedConfig;
   }
 }
 
 export async function saveConfig(config: Config): Promise<void> {
   await mkdir(COUPON_FINDER_DIR, { recursive: true });
   const normalized = normalizeConfig(config as ConfigInput);
-  await writeFile(CONFIG_FILE, JSON.stringify(normalized, null, 2), "utf-8");
+  await writeFile(CONFIG_FILE, serializeToml(normalized), "utf-8");
   cachedConfig = normalized;
 }
 
@@ -146,7 +228,6 @@ sourceParallel: ${config.sourceParallel}
 parallel: ${config.parallel} (course pages per source)
 browser: "${config.browser}"
 headless: ${config.headless}
-autoOpen: ${config.autoOpen}
 expandCoupons: ${config.expandCoupons}
 resultsDir: "${config.resultsDir}"`;
 }

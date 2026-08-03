@@ -1,11 +1,18 @@
 import { existsSync, statSync, writeFileSync, unlinkSync } from "fs";
-import { dirname, join } from "path";
+import { basename, dirname, join, resolve } from "path";
 import { logger } from "./logger";
 
-export function resolveInstalledBinary(): string {
-  const binaryPath = process.execPath;
+const INSTALLED_BINARY_NAME = "coupon-finder";
 
-  // Verify it's a regular file (not symlink)
+export function resolveInstalledBinary(): string {
+  const binaryPath = resolve(process.execPath);
+
+  if (basename(binaryPath) !== INSTALLED_BINARY_NAME) {
+    throw new Error(
+      `Running executable is ${basename(binaryPath)}, not the installed ${INSTALLED_BINARY_NAME} release binary`
+    );
+  }
+
   try {
     const stat = statSync(binaryPath);
     if (!stat.isFile()) {
@@ -74,7 +81,7 @@ export function validateInstallLayout(): void {
     logger.error(
       `Unsupported install layout: ${error instanceof Error ? error.message : error}`
     );
-    logger.error("Reinstall using: curl -fsSL github.com/minatorak/coupon-finder/install.sh | bash");
+    logger.error("Reinstall using: curl -fsSL https://raw.githubusercontent.com/minatorak/coupon-finder/main/install.sh | bash");
     process.exit(1);
   }
 }

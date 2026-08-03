@@ -4,10 +4,9 @@ import { mergeCourses, countBySource } from "../merge/merger";
 import { saveResults } from "../storage/results";
 import { cleanupOldResults } from "../storage/cleanup";
 import { logger } from "../utils/logger";
-import { mapBrowserConfig } from "../utils/browser";
 import { Course, SourceType } from "../types";
 
-interface FindOptions {
+export interface FindOptions {
   pages?: number;
   source?: SourceType;
   sourceParallel?: boolean;
@@ -44,10 +43,9 @@ export async function find(options: FindOptions = {}): Promise<void> {
     let allCourses: Course[] = [];
 
     if (sourceParallel) {
-      const browserType = mapBrowserConfig(config.browser);
       const results = await Promise.allSettled(
         scrapers.map((scraper) =>
-          scraper.scrape(pages, parallel, config.headless, browserType)
+          scraper.scrape(pages, parallel, config.headless, config.browser)
         )
       );
 
@@ -63,13 +61,12 @@ export async function find(options: FindOptions = {}): Promise<void> {
         }
       }
     } else {
-      const browserType = mapBrowserConfig(config.browser);
       for (let i = 0; i < scrapers.length; i++) {
         const scraper = scrapers[i];
         const source = sources[i];
 
         try {
-          const courses = await scraper.scrape(pages, parallel, config.headless, browserType);
+          const courses = await scraper.scrape(pages, parallel, config.headless, config.browser);
           logger.info(`✅ ${source}: ${courses.length} courses`);
           allCourses.push(...courses);
         } catch (error) {

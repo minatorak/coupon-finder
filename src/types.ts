@@ -13,6 +13,8 @@ export interface Course {
   udemyUrl: string;
   title: string;
   couponCodes: string[];
+  /** Coupon confirmed by the enrollment check to make this course free. */
+  appliedCouponCode?: string;
   sourceType: SourceType;
   scrapedAt: Date;
   url?: string;
@@ -33,7 +35,6 @@ export interface Config {
   parallel: number;
   browser: "firefox" | "chrome" | "brave";
   headless: boolean;
-  autoOpen: boolean;
   expandCoupons: boolean;
   resultsDir: string;
 }
@@ -45,7 +46,7 @@ export interface BrowserPlugin {
   findSessionFile(): Promise<string>;
 }
 
-export type BrowserType = "firefox" | "chromium";
+export type BrowserType = "firefox" | "chrome" | "brave" | "chromium";
 
 export interface ScraperPlugin {
   name: SourceType;

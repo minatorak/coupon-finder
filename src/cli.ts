@@ -4,9 +4,35 @@ import { configCmd } from "./commands/config-cmd";
 import { find } from "./commands/find";
 import { list } from "./commands/list";
 import { claim } from "./commands/claim";
+import { run } from "./commands/run";
 import { update } from "./commands/update";
 import { logger } from "./utils/logger";
 import { VERSION } from "./version";
+import { FindOptions } from "./commands/find";
+import { SourceType } from "./types";
+
+function parseFindOptions(args: string[]): FindOptions {
+  const options: FindOptions = {};
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--pages" && args[i + 1]) {
+      options.pages = Number.parseInt(args[++i], 10);
+    } else if (args[i] === "--source" && args[i + 1]) {
+      options.source = args[++i] as SourceType;
+    } else if (args[i] === "--parallel" && args[i + 1]) {
+      options.parallel = Number.parseInt(args[++i], 10);
+    } else if (args[i] === "--source-parallel") {
+      options.sourceParallel = true;
+    } else if (
+      args[i] === "--no-source-parallel" ||
+      args[i] === "--no-parallel"
+    ) {
+      options.sourceParallel = false;
+    }
+  }
+
+  return options;
+}
 
 async function main() {
   const args = Bun.argv.slice(2);
@@ -33,42 +59,21 @@ async function main() {
         await configCmd(args.slice(1));
         break;
 
-      case "find": {
-        const options: any = {};
-        for (let i = 1; i < args.length; i++) {
-          if (args[i] === "--pages" && args[i + 1]) {
-            options.pages = Number.parseInt(args[++i], 10);
-          } else if (args[i] === "--source" && args[i + 1]) {
-            options.source = args[++i];
-          } else if (args[i] === "--parallel" && args[i + 1]) {
-            options.parallel = Number.parseInt(args[++i], 10);
-          } else if (args[i] === "--source-parallel") {
-            options.sourceParallel = true;
-          } else if (
-            args[i] === "--no-source-parallel" ||
-            args[i] === "--no-parallel"
-          ) {
-            options.sourceParallel = false;
-          }
-        }
-        await find(options);
+      case "find":
+        await find(parseFindOptions(args.slice(1)));
         break;
-      }
+
+      case "run":
+        await run(parseFindOptions(args.slice(1)));
+        break;
 
       case "list":
         await list();
         break;
 
-      case "claim": {
-        const options: any = {};
-        for (let i = 1; i < args.length; i++) {
-          if (args[i] === "--open") {
-            options.open = true;
-          }
-        }
-        await claim(options);
+      case "claim":
+        await claim();
         break;
-      }
 
       case "update":
         await update();
@@ -101,15 +106,13 @@ COMMANDS:
   config          View or edit configuration
   find            Scrape coupons from configured sources
   list            Check enrollment status for scraped courses
-  claim           Auto-enroll in claimable courses
+  claim           Open free/100% off course pages in browser (batches of 10)
+  run             Run find, list, then claim in sequence
   update          Check for and install updates
 
 OPTIONS:
   --version, -v   Show version
   --help, -h      Show this help message
-
-CLAIM OPTIONS:
-  --open          Open course URLs in browser (10 at a time, press Enter between batches)
 
 FIND OPTIONS:
   --parallel N            Max course pages open at once per source
@@ -126,9 +129,9 @@ EXAMPLES:
   coupon-finder find --pages 5
   coupon-finder find --parallel 4
   coupon-finder find --no-source-parallel
+  coupon-finder run --pages 5
   coupon-finder list
   coupon-finder claim
-  coupon-finder claim --open
   coupon-finder update
 
 For more info, visit: https://github.com/minatorak/coupon-finder

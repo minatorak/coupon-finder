@@ -42,9 +42,9 @@ coupon-finder config --set key=value
 - `sourceParallel` (boolean) — Run source scrapers concurrently (default: true)
 - `parallel` (integer) — Max course pages open at once per source (default: 4)
 - `headless` (boolean) — Run browser headless (default: true)
-- `autoOpen` (boolean) — Auto-open URLs after claim (default: false)
 - `expandCoupons` (boolean) — Discover instructor-wide coupons (default: true)
 - `sources` (array) — CSV of sources (default: all 4)
+- `resultsDir` (string) — Directory for result files
 
 **Examples:**
 ```bash
@@ -213,28 +213,40 @@ exec $SHELL
 **Permission denied:**
 If you see a permission error, run with `sudo`:
 ```bash
-sudo coupon-finder update
+coupon-finder update
 ```
 
 ---
 
 ## Configuration File
 
-**Location:** `~/.coupon-finder/config.json`
+**Location:** `~/.coupon-finder/config.toml`
 
 **Default:**
-```json
-{
-  "pages": 1,
-  "sources": ["realdiscount", "couponscorpion", "udemyxpert", "couponami"],
-  "sourceParallel": true,
-  "parallel": 4,
-  "browser": "firefox",
-  "headless": true,
-  "autoOpen": false,
-  "expandCoupons": true,
-  "resultsDir": "~/.coupon-finder/results"
-}
+```toml
+# Number of pages to scrape from each enabled coupon source.
+pages = 1
+
+# Coupon sources to scrape. Remove a source to skip it.
+sources = ["realdiscount", "couponscorpion", "udemyxpert", "couponami"]
+
+# Scrape all enabled sources at the same time.
+sourceParallel = true
+
+# Maximum course pages to open concurrently for each source.
+parallel = 4
+
+# Browser used to read your logged-in Udemy session.
+browser = "firefox"
+
+# Run the installed system browser without showing a window.
+headless = true
+
+# Look for instructor-wide coupons in addition to course-specific coupons.
+expandCoupons = true
+
+# Directory where scraped and checked course results are stored.
+resultsDir = "~/.coupon-finder/results"
 ```
 
 ---

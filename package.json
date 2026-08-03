@@ -5,15 +5,16 @@
   "bin": "./src/cli.ts",
   "scripts": {
     "dev": "bun run src/cli.ts",
-    "build": "bun build --outdir dist src/cli.ts && chmod +x dist/cli.js",
+    "build": "bun run build:release",
+    "build:release": "bun run scripts/build-release.ts",
+    "check:version": "bun run scripts/check-version.ts",
+    "check:release-key": "bun run scripts/check-release-key.ts",
     "test": "bun test"
   },
   "dependencies": {
-    "playwright": "^1.45.0",
-    "better-sqlite3": "^9.0.0"
+    "playwright": "1.45.3"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "@types/better-sqlite3": "^7.6.0"
+    "@types/bun": "latest"
   }
 }

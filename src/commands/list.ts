@@ -30,14 +30,14 @@ async function getLatestMergedResults(): Promise<Course[]> {
   }
 }
 
-export async function list(): Promise<void> {
+export async function list(): Promise<boolean> {
   try {
     logger.info("Loading merged courses...");
     const courses = await getLatestMergedResults();
 
     if (courses.length === 0) {
       console.log("No courses found. Run 'coupon-finder find' first.");
-      return;
+      return false;
     }
 
     logger.info("Checking enrollment status...");
@@ -69,6 +69,7 @@ export async function list(): Promise<void> {
       console.log(`Run: coupon-finder claim`);
     }
     console.log();
+    return true;
   } catch (error) {
     logger.error(`List failed: ${error}`);
     process.exit(1);

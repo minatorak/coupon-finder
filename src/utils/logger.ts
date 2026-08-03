@@ -5,7 +5,7 @@ export enum LogLevel {
   ERROR = 3,
 }
 
-let currentLevel = LogLevel.INFO;
+let currentLevel = process?.env?.DEBUG ? LogLevel.DEBUG : LogLevel.INFO;
 
 export function setLogLevel(level: LogLevel) {
   currentLevel = level;

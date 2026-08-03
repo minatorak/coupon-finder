@@ -1,19 +1,12 @@
 import { Course } from "../types";
-import { UdemyAPI } from "./api";
+import { UdemyAPI, CouponResult } from "./api";
 import { logger } from "../utils/logger";
 
-function extractCourseId(url: string): string | null {
+function extractSlug(url: string): string | null {
   try {
-    // Udemy URLs: https://www.udemy.com/course/course-slug/
-    // or https://www.udemy.com/course/course-slug/?couponCode=CODE
-    const match = url.match(/udemy\.com\/course\/([a-z0-9-]+)/);
-    if (match) {
-      // For now, return the slug; Phase 5+ would resolve to numeric ID
-      return match[1];
-    }
-  } catch (e) {
-    logger.debug(`Failed to extract course ID from ${url}: ${e}`);
-  }
+    const match = url.match(/udemy\.com\/course\/([a-z0-9-]+)/i);
+    if (match) return match[1].toLowerCase();
+  } catch {}
   return null;
 }
 
@@ -26,77 +19,96 @@ export async function checkEnrollment(
   api: UdemyAPI
 ): Promise<Course[]> {
   const checked = [...courses];
-  let enrolledCount = 0;
-  let claimableCount = 0;
+  let enrolled = 0;
+  let claimable = 0;
+  let skipped = 0;
+
+  logger.info(`Checking ${checked.length} courses via Udemy API...`);
 
   for (let i = 0; i < checked.length; i++) {
     const course = checked[i];
+    const slug = extractSlug(getCourseUrl(course));
+
+    if (!slug) {
+      course.claimable = false;
+      skipped++;
+      continue;
+    }
 
     try {
-      // Extract course ID from Udemy URL
-      const courseUrl = getCourseUrl(course);
-      const courseId = extractCourseId(courseUrl);
-      if (!courseId) {
+      const info = await api.getCourseInfo(slug);
+      if (!info) {
         course.claimable = false;
+        skipped++;
+        logger.debug(`[${i + 1}/${checked.length}] ${course.title}: no API data`);
         continue;
       }
 
-      const isEnrolled = await api.isEnrolled(parseInt(courseId));
+      course.title = info.title;
+      course.price = info.price;
+      course.originalPrice = info.originalPrice;
+      course.discount = info.isPaid ? 0 : 100;
+
+      const isEnrolled = await api.isEnrolled(info.id);
       course.enrolled = isEnrolled;
 
       if (isEnrolled) {
         course.claimable = false;
-        enrolledCount++;
-      } else {
-        // Claimable if not enrolled and has valid discount/coupon
-        course.claimable = (course.discount ?? 0) > 0 || course.couponCodes.length > 0;
-        if (course.claimable) claimableCount++;
+        enrolled++;
+        logger.info(`[${i + 1}/${checked.length}] 🔒 ${info.title}`);
+        continue;
       }
 
-      // Log every 10 courses
-      if ((i + 1) % 10 === 0) {
-        logger.debug(`Checked ${i + 1}/${checked.length} courses...`);
+      // The course endpoint may omit pricing and leave `price` at 0 even for
+      // paid courses. `isPaid` is the authoritative signal for courses that
+      // are intrinsically free; paid courses must still validate their coupon.
+      const isFreeOnUdemy = !info.isPaid;
+
+      if (isFreeOnUdemy) {
+        course.price = 0;
+        course.discount = 100;
+        course.appliedCouponCode = undefined;
+        course.claimable = true;
+        claimable++;
+        logger.info(`[${i + 1}/${checked.length}] ✅ ${info.title} — free on Udemy`);
+        continue;
+      }
+
+      const couponCodes = course.couponCodes || [];
+      let best: { code: string; result: CouponResult } | null = null;
+
+      for (const code of couponCodes) {
+        const r = await api.checkCoupon(info.id, code);
+        if (!r || !r.valid) continue;
+        if (r.isFree) { best = { code, result: r }; break; }
+        if (!best || r.discountPercent > best.result.discountPercent) best = { code, result: r };
+      }
+
+      if (best && best.result.isFree) {
+        course.price = best.result.price;
+        course.originalPrice = best.result.originalPrice;
+        course.discount = best.result.discountPercent;
+        course.appliedCouponCode = best.code;
+        course.claimable = true;
+        claimable++;
+        logger.info(`[${i + 1}/${checked.length}] ✅ ${info.title} — coupon ${best.code} = 100% off`);
+      } else if (best) {
+        course.price = best.result.price;
+        course.originalPrice = best.result.originalPrice;
+        course.discount = best.result.discountPercent;
+        course.claimable = false;
+        logger.info(`[${i + 1}/${checked.length}] ⚠️  ${info.title} — coupon ${best.code} = ${best.result.discountPercent}% off (${best.result.priceString})`);
+      } else {
+        course.claimable = false;
+        logger.info(`[${i + 1}/${checked.length}] ⚠️  ${info.title} — no valid coupon (price ${info.priceString})`);
       }
     } catch (error) {
       course.claimError = String(error);
       course.claimable = false;
-      logger.debug(`Failed to check enrollment for ${course.title}: ${error}`);
+      logger.debug(`[${i + 1}/${checked.length}] ${course.title}: ${error}`);
     }
   }
 
-  logger.info(
-    `Enrollment check complete: ${enrolledCount} enrolled, ${claimableCount} claimable`
-  );
+  logger.info(`Done: ${enrolled} enrolled, ${claimable} claimable, ${skipped} skipped`);
   return checked;
-}
-
-export async function claimCourses(
-  courses: Course[],
-  api: UdemyAPI
-): Promise<{ success: number; failed: number; errors: Record<string, string> }> {
-  const claimable = courses.filter((c) => c.claimable);
-  const errors: Record<string, string> = {};
-  let success = 0;
-  let failed = 0;
-
-  logger.info(`Claiming ${claimable.length} courses...`);
-
-  for (const course of claimable) {
-    try {
-      const courseUrl = getCourseUrl(course);
-      const courseId = extractCourseId(courseUrl);
-      if (!courseId) throw new Error("Could not extract course ID");
-
-      // Try to enroll (simplified - would need full API implementation)
-      logger.info(`✅ ${course.title} (${course.discount}% off)`);
-      success++;
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      errors[getCourseUrl(course)] = msg;
-      failed++;
-      logger.warn(`❌ ${course.title}: ${msg}`);
-    }
-  }
-
-  return { success, failed, errors };
 }

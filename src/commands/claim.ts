@@ -1,8 +1,3 @@
-import { loadConfig } from "../config";
-import { createUdemyAPI } from "../udemy/api";
-import { readSessionCookies } from "../udemy/session";
-import { claimCourses } from "../udemy/enrollment";
-import { saveResults } from "../storage/results";
 import { logger } from "../utils/logger";
 import { openUrlsInBatches } from "../utils/browser-opener";
 import { Course } from "../types";
@@ -31,7 +26,36 @@ async function getLatestCheckedResults(): Promise<Course[]> {
   }
 }
 
-export async function claim(options?: { open?: boolean }): Promise<void> {
+function isEligible(course: Course): boolean {
+  return (
+    course.claimable === true &&
+    course.enrolled === false &&
+    !course.claimError
+  );
+}
+
+export function buildClaimUrl(
+  course: Pick<Course, "udemyUrl" | "url" | "couponCodes" | "appliedCouponCode">
+): string | null {
+  const courseUrl = course.udemyUrl ?? course.url;
+  if (!courseUrl) return null;
+
+  // Old checked-result files do not contain appliedCouponCode, so use their
+  // first discovered code as a backward-compatible fallback.
+  const couponCode = course.appliedCouponCode ?? course.couponCodes?.[0];
+  if (!couponCode) return courseUrl;
+
+  try {
+    const url = new URL(courseUrl);
+    url.searchParams.set("couponCode", couponCode);
+    return url.toString();
+  } catch {
+    const separator = courseUrl.includes("?") ? "&" : "?";
+    return `${courseUrl}${separator}couponCode=${encodeURIComponent(couponCode)}`;
+  }
+}
+
+export async function claim(): Promise<void> {
   try {
     logger.info("Loading checked courses...");
     const courses = await getLatestCheckedResults();
@@ -41,56 +65,29 @@ export async function claim(options?: { open?: boolean }): Promise<void> {
       return;
     }
 
-    const claimable = courses.filter((c) => c.claimable);
-    if (claimable.length === 0) {
+    const eligible = courses.filter(isEligible);
+    if (eligible.length === 0) {
       console.log("No claimable courses available.");
       return;
     }
 
-    console.log();
-    console.log(`🚀 Claiming ${claimable.length} courses...`);
-    console.log();
-
-    const config = await loadConfig();
-    const cookies = await readSessionCookies(config.browser);
-    const api = await createUdemyAPI(cookies.authToken);
-
-    const result = await claimCourses(claimable, api);
-
-    console.log();
-    console.log(`✅ Claimed ${result.success}/${claimable.length}`);
-    if (result.failed > 0) {
-      console.log(`❌ Failed: ${result.failed}`);
-    }
-    console.log();
-
-    // Collect URLs from successfully claimed courses
-    const claimedUrls = claimable
-      .filter((c) => !c.claimError)
-      .map((c) => c.udemyUrl ?? c.url)
+    const urls = eligible
+      .map(buildClaimUrl)
       .filter((url): url is string => Boolean(url));
 
-    // Save claim report
-    const report = {
-      timestamp: new Date().toISOString(),
-      total: claimable.length,
-      success: result.success,
-      failed: result.failed,
-      errors: result.errors,
-    };
-
-    await Bun.write(
-      `${RESULTS_DIR}/claim_report_${Date.now()}.json`,
-      JSON.stringify(report, null, 2)
-    );
-
-    // Open URLs in batches if requested
-    if (options?.open && claimedUrls.length > 0) {
-      console.log();
-      await openUrlsInBatches(claimedUrls);
+    if (urls.length === 0) {
+      console.log("No valid URLs found for the available courses.");
+      return;
     }
 
-    logger.info("✅ Claim complete!");
+    logger.info(`${eligible.length} claimable courses (not enrolled, valid coupon)`);
+    for (const c of eligible) {
+      const codes = c.couponCodes?.length ? c.couponCodes.join(", ") : `discount ${c.discount}%`;
+      logger.info(`  → ${c.title} (${codes})`);
+    }
+
+    await openUrlsInBatches(urls);
+    logger.info("Done! Open any course page in your browser to claim it manually.");
   } catch (error) {
     logger.error(`Claim failed: ${error}`);
     process.exit(1);

@@ -20,3 +20,7 @@ results/
 .agents/
 skills-lock.json
 .env*
+
+# Never track release signing private keys.
+**/*-private.pem
+**/*-private.key

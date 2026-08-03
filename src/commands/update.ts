@@ -1,5 +1,5 @@
 import { existsSync, chmodSync, renameSync, copyFileSync, unlinkSync, readdirSync } from "fs";
-import { join, dirname } from "path";
+import { basename, join, dirname } from "path";
 import { logger } from "../utils/logger";
 import { VERSION } from "../version";
 import { validatePlatform } from "../utils/platform";
@@ -11,7 +11,7 @@ import {
 } from "../utils/install";
 import { filterCompatibleReleases, formatReleaseMenu } from "../utils/releases";
 import { downloadToTemp, cleanupTemp } from "../utils/download";
-import { verifyChecksum } from "../utils/checksum";
+import { verifyChecksum, verifyManifestSignature } from "../utils/checksum";
 import { acquireLock, releaseLock } from "../utils/lock";
 
 async function getUserSelection(prompt: string): Promise<number> {
@@ -27,7 +27,10 @@ async function getUserSelection(prompt: string): Promise<number> {
 }
 
 function backupCurrentBinary(binaryPath: string): string {
-  const backupPath = `${binaryPath}.backup-${Date.now()}.bak`;
+  const backupPath = join(
+    dirname(binaryPath),
+    `.${basename(binaryPath)}.backup-${Date.now()}.bak`,
+  );
   copyFileSync(binaryPath, backupPath);
   logger.debug(`Backup created: ${backupPath}`);
 
@@ -49,10 +52,6 @@ function backupCurrentBinary(binaryPath: string): string {
   }
 
   return backupPath;
-}
-
-function basename(path: string): string {
-  return path.split("/").pop() || "";
 }
 
 export async function update(): Promise<void> {
@@ -109,15 +108,15 @@ export async function update(): Promise<void> {
     if (!hasPermission) {
       logger.warn(`No write permission to ${getInstallDirectory()}`);
       console.log(`
-Try with sudo:
-  sudo coupon-finder update
+The install directory is not writable. Reinstall to ~/.local/bin or fix its permissions.
       `);
       return;
     }
 
     // Step 9: Download binary
-    let binaryResult;
-    let checksumResult;
+    let binaryResult: Awaited<ReturnType<typeof downloadToTemp>> | undefined;
+    let checksumResult: Awaited<ReturnType<typeof downloadToTemp>> | undefined;
+    let signatureResult: Awaited<ReturnType<typeof downloadToTemp>> | undefined;
     let checksumText: string;
 
     try {
@@ -131,6 +130,11 @@ Try with sudo:
         selectedRelease.checksumAsset.name
       );
 
+      signatureResult = await downloadToTemp(
+        selectedRelease.signatureAsset.url,
+        selectedRelease.signatureAsset.name
+      );
+
       // Read checksum text
       checksumText = await Bun.file(checksumResult.filePath).text();
     } catch (error) {
@@ -140,10 +144,24 @@ Try with sudo:
       if (checksumResult) {
         await cleanupTemp(checksumResult.filePath);
       }
+      if (signatureResult) {
+        await cleanupTemp(signatureResult.filePath);
+      }
       throw error;
     }
 
-    // Step 10: Verify checksum
+    // Step 10: Verify the signed manifest before trusting its checksum.
+    const signatureValid = await verifyManifestSignature(
+      checksumResult.filePath,
+      signatureResult.filePath,
+    );
+    if (!signatureValid) {
+      await cleanupTemp(binaryResult.filePath);
+      await cleanupTemp(checksumResult.filePath);
+      await cleanupTemp(signatureResult.filePath);
+      throw new Error("Release signature verification failed. Binary was not replaced.");
+    }
+
     const checksumValid = await verifyChecksum(
       binaryResult.filePath,
       checksumText,
@@ -153,6 +171,7 @@ Try with sudo:
     if (!checksumValid) {
       await cleanupTemp(binaryResult.filePath);
       await cleanupTemp(checksumResult.filePath);
+      await cleanupTemp(signatureResult.filePath);
       throw new Error("Checksum verification failed. Binary may be corrupted.");
     }
 
@@ -169,6 +188,7 @@ Try with sudo:
 
       // Clean up checksum temp
       await cleanupTemp(checksumResult.filePath);
+      await cleanupTemp(signatureResult.filePath);
 
       // Step 14: Show summary
       console.log();

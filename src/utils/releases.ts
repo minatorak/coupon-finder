@@ -7,7 +7,7 @@ export interface GitHubRelease {
   prerelease: boolean;
   assets: {
     name: string;
-    download_url: string;
+    browser_download_url: string;
     size: number;
   }[];
   published_at: string;
@@ -22,6 +22,10 @@ export interface ReleaseWithAssets {
     size: number;
   };
   checksumAsset: {
+    name: string;
+    url: string;
+  };
+  signatureAsset: {
     name: string;
     url: string;
   };
@@ -126,23 +130,29 @@ export async function filterCompatibleReleases(
 
   for (const release of filtered) {
     const binaryName = `coupon-finder-${platform}`;
-    const checksumName = `coupon-finder-${platform}.sha256`;
+    const checksumName = "checksums.txt";
+    const signatureName = "checksums.txt.sig";
 
     const binaryAsset = release.assets.find((a) => a.name === binaryName);
     const checksumAsset = release.assets.find((a) => a.name === checksumName);
+    const signatureAsset = release.assets.find((a) => a.name === signatureName);
 
-    if (binaryAsset && checksumAsset) {
+    if (binaryAsset && checksumAsset && signatureAsset) {
       compatible.push({
         version: release.tag_name.replace(/^v/, ""),
         tagName: release.tag_name,
         binaryAsset: {
           name: binaryAsset.name,
-          url: binaryAsset.download_url,
+          url: binaryAsset.browser_download_url,
           size: binaryAsset.size,
         },
         checksumAsset: {
           name: checksumAsset.name,
-          url: checksumAsset.download_url,
+          url: checksumAsset.browser_download_url,
+        },
+        signatureAsset: {
+          name: signatureAsset.name,
+          url: signatureAsset.browser_download_url,
         },
         publishedAt: release.published_at,
       });
@@ -151,7 +161,7 @@ export async function filterCompatibleReleases(
 
   if (compatible.length === 0) {
     throw new Error(
-      `No compatible releases found for ${platform}. Ensure Phase 6 release assets are present.`
+      `No compatible releases found for ${platform}. Ensure the signed release assets are present.`
     );
   }
 

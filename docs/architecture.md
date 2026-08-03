@@ -8,7 +8,7 @@ coupon-finder is a CLI tool built with Bun + TypeScript that:
 3. Opens course pages with configurable concurrency to resolve Udemy URLs and coupon codes
 4. Deduplicates and merges results by URL
 5. Checks enrollment status via Udemy API
-6. Auto-enrolls in available courses
+6. Open udemy url with coupon code (for Free or discount 100% off) as batch
 
 ## Design Principles
 

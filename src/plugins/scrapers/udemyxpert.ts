@@ -1,17 +1,28 @@
-import { ScraperPlugin, Course, BrowserType } from "../../types";
-import { setupBrowser, closeBrowser } from "../../utils/browser";
-import { retryWithTimeout } from "../../utils/retry";
+import { Page } from "playwright";
+import { BrowserType, Course, ScraperPlugin } from "../../types";
+import { closeBrowser, setupBrowser } from "../../utils/browser";
 import { logger } from "../../utils/logger";
+import { retryWithTimeout } from "../../utils/retry";
 import {
+  canonicalizeUdemyUrl,
   CourseSeed,
-  scrapeCoursePage,
+  extractCouponCodes,
   withConcurrentPages,
 } from "../../utils/scraper";
+
+const BASE_URL = "https://udemyxpert.com/courses";
+const COURSE_LINK_SELECTOR = 'main a[href^="/courses/"]';
+const COUPON_LINK_SELECTOR = 'a[href*="udemy.com/course/"]';
 
 export class UdemyxpertScraper implements ScraperPlugin {
   name = "udemyxpert" as const;
 
-  async scrape(pages: number, parallel: number, headless?: boolean, browser?: BrowserType): Promise<Course[]> {
+  async scrape(
+    pages: number,
+    parallel: number,
+    headless?: boolean,
+    browser?: BrowserType,
+  ): Promise<Course[]> {
     const browserInstance = await setupBrowser(headless, browser);
     const courses: Course[] = [];
 
@@ -19,75 +30,120 @@ export class UdemyxpertScraper implements ScraperPlugin {
       const context = await browserInstance.newContext();
       const page = await context.newPage();
 
-      for (let pageNum = 1; pageNum <= pages; pageNum++) {
-        try {
-          const seeds = await retryWithTimeout(async () => {
-            logger.debug(`Scraping udemyxpert source page ${pageNum}...`);
-
-            const url =
-              pageNum === 1
-                ? "https://udemyxpert.com/courses/"
-                : `https://udemyxpert.com/courses/page/${pageNum}/`;
-
-            await page.goto(url, { waitUntil: "networkidle" });
-
-            const courseElements = await page.locator(".course-card").all();
-            const seedCourses: CourseSeed[] = [];
-
-            for (const el of courseElements) {
-              try {
-                const title = await el.locator(".title").textContent();
-                const link = await el.locator("a").getAttribute("href");
-                const discount = await el.locator(".badge").textContent();
-
-                if (title && link) {
-                  seedCourses.push({
-                    coursePageUrl: new URL(link.trim(), url).href,
-                    title: title.trim(),
-                    discount: this.parseDiscount(discount),
-                  });
-                }
-              } catch (error) {
-                logger.debug(`Failed to scrape udemyxpert course seed: ${error}`);
-              }
+      try {
+        for (let pageNum = 1; pageNum <= pages; pageNum++) {
+          try {
+            const seeds = await retryWithTimeout(
+              () => this.pagination(page, pageNum),
+              3,
+              30000,
+            );
+            if (seeds.length === 0) {
+              logger.debug(`udemyxpert page ${pageNum}: no course pages found`);
+              continue;
             }
 
-            logger.info(
-              `udemyxpert source page ${pageNum}: ${seedCourses.length} course pages`
+            const resolved = await withConcurrentPages(
+              context,
+              seeds,
+              parallel,
+              (coursePage, seed) =>
+                retryWithTimeout(
+                  () => this.fetch(coursePage, seed),
+                  3,
+                  30000,
+                ),
             );
 
-            return seedCourses;
-          });
-
-          const resolvedCourses = await withConcurrentPages(
-            context,
-            seeds,
-            parallel,
-            async (coursePage, seed) =>
-              retryWithTimeout(
-                () => scrapeCoursePage(coursePage, seed, this.name),
-                3,
-                5000
-              )
-          );
-
-          courses.push(...resolvedCourses);
-        } catch (error) {
-          logger.warn(`Failed to scrape udemyxpert source page ${pageNum}: ${error}`);
+            courses.push(...resolved);
+          } catch (error) {
+            logger.warn(`udemyxpert page ${pageNum} failed: ${error}`);
+          }
         }
+      } finally {
+        await context.close();
       }
-
-      await context.close();
     } finally {
       await closeBrowser(browserInstance);
     }
 
+    logger.info(`udemyxpert: ${courses.length} courses total`);
     return courses;
   }
 
-  private parseDiscount(text?: string | null): number | undefined {
-    if (!text) return undefined;
-    const match = text.match(/(\d+)%/);
+  private async pagination(page: Page, pageNum: number): Promise<CourseSeed[]> {
+    const url = pageNum === 1 ? BASE_URL : `${BASE_URL}?page=${pageNum}`;
+    logger.debug(`udemyxpert page ${pageNum}: ${url}`);
+
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.waitForSelector(COURSE_LINK_SELECTOR, { timeout: 30000 });
+
+    const courseElements = await page.locator(COURSE_LINK_SELECTOR).all();
+    const seeds: CourseSeed[] = [];
+
+    for (const element of courseElements) {
+      try {
+        const href = await element.getAttribute("href");
+        const image = element.locator("img").first();
+        const title = await image.getAttribute("alt");
+        const discount = await element
+          .locator('[data-slot="badge"]')
+          .textContent()
+          .catch(() => null);
+
+        if (href && title) {
+          seeds.push({
+            coursePageUrl: new URL(href, url).href,
+            title: title.trim(),
+            discount: this.parseDiscount(discount),
+          });
+        }
+      } catch (error) {
+        logger.debug(`udemyxpert seed extract failed: ${error}`);
+      }
+    }
+
+    logger.info(`udemyxpert page ${pageNum}: ${seeds.length} courses`);
+    return seeds;
+  }
+
+  private async fetch(page: Page, seed: CourseSeed): Promise<Course | null> {
+    await page.goto(seed.coursePageUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+
+    const couponLink = page.locator(COUPON_LINK_SELECTOR).filter({
+      hasText: "Get Coupon",
+    });
+    const href = await couponLink.first().getAttribute("href");
+    if (!href) {
+      logger.debug(`udemyxpert: no coupon link for ${seed.title}`);
+      return null;
+    }
+
+    const couponUrl = new URL(href, seed.coursePageUrl).href;
+    const udemyUrl = canonicalizeUdemyUrl(couponUrl);
+    const couponCodes = extractCouponCodes(couponUrl);
+
+    logger.debug(
+      `udemyxpert fetch: ${seed.title} -> ${udemyUrl} codes=${couponCodes.join(",")}`,
+    );
+
+    return {
+      udemyUrl,
+      url: udemyUrl,
+      title: seed.title,
+      couponCodes,
+      discount: seed.discount,
+      sourceType: this.name,
+      source: this.name,
+      scrapedAt: new Date(),
+    };
+  }
+
+  private parseDiscount(text: string | null): number | undefined {
+    const match = text?.match(/(\d+)\s*%/);
     return match ? Number.parseInt(match[1], 10) : undefined;
   }
 }

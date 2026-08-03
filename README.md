@@ -10,17 +10,34 @@ Coupon-finder is a command-line tool that automates discovering free Udemy cours
 - 🔗 **Session-aware:** Reads your active Udemy browser session (Firefox, Chrome, Brave) to check enrollment status
 - 📊 **Deduplication:** Automatically merges results by course URL, keeping the best coupon code
 - 🚀 **Auto-enrollment:** Batch-enroll in courses with valid coupons
-- ⚙️ **Configurable:** JSON config at `~/.coupon-finder/config.json`
+- ⚙️ **Configurable:** TOML config at `~/.coupon-finder/config.toml`
 - 📦 **Self-contained:** Single executable, no Python or Node.js required
 - 🧹 **Auto-cleanup:** Deletes result files older than 3 days
 
 ## Installation
 
+The installer downloads a signed, platform-specific executable from GitHub
+Releases. Bun is only needed for development; it is not required on the user's
+machine.
+
+Supported release targets:
+
+- macOS Apple Silicon (`darwin-arm64`)
+- macOS Intel (`darwin-x64`)
+- Linux x64 (`linux-x64`)
+
+Before installing, ensure `curl` and `openssl` are available, and install a
+supported system browser (Firefox, Chrome, or Brave) with an active Udemy
+session. Android/Termux, Windows, and Linux ARM64 are not supported yet.
+
 ```bash
-curl -fsSL github.com/minatorak/coupon-finder/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/minatorak/coupon-finder/main/install.sh | bash
 ```
 
-Then verify:
+The installer places the executable at `~/.local/bin/coupon-finder`, adds that
+directory to the detected zsh/bash startup file once, and never uses `sudo`.
+Open a new terminal after installation, then verify:
+
 
 ```bash
 coupon-finder --help
@@ -58,6 +75,19 @@ This scrapes 5 pages from each source, opens course pages with configurable per-
 💾 Saved to: ~/.coupon-finder/results/2026-06-18T120500Z_merged.json
 ```
 
+### Run the full workflow
+
+Run find, list, and claim in order with one command:
+
+```bash
+coupon-finder run --pages 5
+```
+
+`run` accepts every `find` option. It stops before claiming if this run has no
+newly checked courses, so it never opens courses from an older result file.
+With the Makefile, use `make run` to run the workflow with the configured
+defaults.
+
 ### 3. List claimable courses
 
 ```bash
@@ -90,6 +120,13 @@ Result:
 ```
 
 ## Commands
+
+### Global options
+
+```bash
+coupon-finder --help
+coupon-finder --version
+```
 
 ### `coupon-finder whoami`
 
@@ -134,18 +171,38 @@ Shows:
 
 ### `coupon-finder claim`
 
-Auto-enroll in all claimable courses.
+Open eligible course pages in your browser so you can claim them.
 
 ```bash
 coupon-finder claim
 ```
 
-**Options:**
-- `--open` — open claimed course URLs in your browser (10 at a time)
+### `coupon-finder run [FIND OPTIONS]`
+
+Run `find`, `list`, and `claim` sequentially. It accepts the same options as
+`find` and only proceeds to `claim` when `list` saved newly checked results.
+
+```bash
+coupon-finder run --pages 5
+coupon-finder run --source udemyxpert --parallel 2
+```
+
+### `coupon-finder update`
+
+Check for and install a newer signed release. This command only works when
+running the installed `~/.local/bin/coupon-finder` binary.
+
+```bash
+coupon-finder update
+```
 
 ### `coupon-finder config`
 
 View or edit configuration.
+
+On the first run, the command asks for every setting and writes
+`~/.coupon-finder/config.toml`. Later runs only ask whether you want to edit;
+choosing no uses the saved values.
 
 ```bash
 # Show current config
@@ -161,21 +218,33 @@ coupon-finder config --set sources=realdiscount,udemyxpert,couponami
 
 ## Configuration
 
-Config file: `~/.coupon-finder/config.json`
+Config file: `~/.coupon-finder/config.toml`
 
 **Default:**
-```json
-{
-  "pages": 1,
-  "sources": ["realdiscount", "couponscorpion", "udemyxpert", "couponami"],
-  "sourceParallel": true,
-  "parallel": 4,
-  "browser": "firefox",
-  "headless": true,
-  "autoOpen": false,
-  "expandCoupons": true,
-  "resultsDir": "~/.coupon-finder/results"
-}
+```toml
+# Number of pages to scrape from each enabled coupon source.
+pages = 1
+
+# Coupon sources to scrape. Remove a source to skip it.
+sources = ["realdiscount", "couponscorpion", "udemyxpert", "couponami"]
+
+# Scrape all enabled sources at the same time.
+sourceParallel = true
+
+# Maximum course pages to open concurrently for each source.
+parallel = 4
+
+# Browser used to read your logged-in Udemy session.
+browser = "firefox"
+
+# Run the installed system browser without showing a window.
+headless = true
+
+# Look for instructor-wide coupons in addition to course-specific coupons.
+expandCoupons = true
+
+# Directory where scraped and checked course results are stored.
+resultsDir = "~/.coupon-finder/results"
 ```
 
 **Fields:**
@@ -185,7 +254,6 @@ Config file: `~/.coupon-finder/config.json`
 - `parallel` — maximum course pages to open at once per source (default: 4)
 - `browser` — firefox, chrome, or brave
 - `headless` — run browser headless (default: true)
-- `autoOpen` — auto-open course URLs after claim (default: false)
 - `expandCoupons` — discover instructor-wide coupons (default: true)
 - `resultsDir` — where to save results
 
@@ -215,6 +283,32 @@ Config file: `~/.coupon-finder/config.json`
 - 🔜 More sources can be added as plugins
 
 ## Troubleshooting
+
+### Command not found after installation
+
+Open a new terminal so the managed `~/.local/bin` PATH block is loaded. For an
+unsupported shell, add this line to its startup file:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+### Unsupported platform or missing OpenSSL
+
+The first release supports only macOS arm64/x64 and Linux x64. Install the
+system `openssl` package and rerun the installer. Android/Termux and Linux
+ARM64 are intentionally rejected.
+
+### Invalid signature or checksum
+
+The installer refuses to replace an existing binary when the signed manifest,
+signature, or selected binary hash is invalid. Retry from the official install
+command and investigate the release before bypassing verification.
+
+### Missing browser
+
+Install Firefox, Chrome, or Brave and log in to Udemy there. The application
+does not download or manage browser binaries during installation.
 
 ### "Not logged in" error
 

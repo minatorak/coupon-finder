@@ -1,103 +1,77 @@
 import { ScraperPlugin, Course, BrowserType } from "../../types";
-import { setupBrowser, closeBrowser } from "../../utils/browser";
 import { retryWithTimeout } from "../../utils/retry";
 import { logger } from "../../utils/logger";
 import {
-  CourseSeed,
-  scrapeCoursePage,
-  withConcurrentPages,
+  canonicalizeUdemyUrl,
+  extractCouponCodes,
 } from "../../utils/scraper";
+
+interface ApiCourse {
+  id: number | string;
+  name: string;
+  url: string;
+  slug: string;
+  store: string;
+  type: string;
+}
+
+interface ApiResponse {
+  items: ApiCourse[];
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+}
+
+const API_BASE = "https://cdn.real.discount/api/courses";
+const PAGE_LIMIT = 12;
 
 export class RealdiscountScraper implements ScraperPlugin {
   name = "realdiscount" as const;
 
   async scrape(pages: number, parallel: number, headless?: boolean, browser?: BrowserType): Promise<Course[]> {
-    const browserInstance = await setupBrowser(headless, browser);
     const courses: Course[] = [];
 
-    try {
-      const context = await browserInstance.newContext();
-      const page = await context.newPage();
-
-      for (let pageNum = 1; pageNum <= pages; pageNum++) {
-        try {
-          const seeds = await retryWithTimeout(async () => {
-            logger.debug(`Scraping realdiscount source page ${pageNum}...`);
-
-            await page.goto("https://www.real.discount/courses?page=1", {
-              waitUntil: "networkidle",
-            });
-
-            if (pageNum > 1) {
-              const pageButton = `button[aria-label="Go to page ${pageNum}"]`;
-              const exists = await page
-                .locator(pageButton)
-                .isVisible()
-                .catch(() => false);
-
-              if (exists) {
-                await page.click(pageButton);
-                await page.waitForTimeout(2000);
-              }
-            }
-
-            const courseElements = await page.locator(".course-card").all();
-            const seedCourses: CourseSeed[] = [];
-
-            for (const el of courseElements) {
-              try {
-                const title = await el.locator(".course-title").textContent();
-                const link = await el.locator("a").getAttribute("href");
-                const discount = await el.locator(".discount").textContent();
-
-                if (title && link) {
-                  seedCourses.push({
-                    coursePageUrl: new URL(link.trim(), page.url()).href,
-                    title: title.trim(),
-                    discount: this.parseDiscount(discount),
-                  });
-                }
-              } catch (error) {
-                logger.debug(`Failed to scrape realdiscount course seed: ${error}`);
-              }
-            }
-
-            logger.info(
-              `realdiscount source page ${pageNum}: ${seedCourses.length} course pages`
-            );
-
-            return seedCourses;
-          });
-
-          const resolvedCourses = await withConcurrentPages(
-            context,
-            seeds,
-            parallel,
-            async (coursePage, seed) =>
-              retryWithTimeout(
-                () => scrapeCoursePage(coursePage, seed, this.name),
-                3,
-                5000
-              )
-          );
-
-          courses.push(...resolvedCourses);
-        } catch (error) {
-          logger.warn(`Failed to scrape realdiscount source page ${pageNum}: ${error}`);
-        }
+    for (let pageNum = 1; pageNum <= pages; pageNum++) {
+      try {
+        const pageCourses = await retryWithTimeout(
+          () => this.fetchPage(pageNum),
+          2,
+          15000,
+        );
+        logger.debug(`realdiscount page ${pageNum}: ${pageCourses.length} courses`);
+        courses.push(...pageCourses);
+      } catch (error) {
+        logger.warn(`realdiscount page ${pageNum} failed: ${error}`);
       }
-
-      await context.close();
-    } finally {
-      await closeBrowser(browserInstance);
     }
 
+    logger.info(`realdiscount: ${courses.length} courses total`);
     return courses;
   }
 
-  private parseDiscount(text?: string | null): number | undefined {
-    if (!text) return undefined;
-    const match = text.match(/(\d+)%/);
-    return match ? Number.parseInt(match[1], 10) : undefined;
+  private async fetchPage(pageNum: number): Promise<Course[]> {
+    const url = `${API_BASE}?page=${pageNum}&limit=${PAGE_LIMIT}&sortBy=sale_start&store=Udemy`;
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+
+    const data = (await response.json()) as ApiResponse;
+
+    return data.items
+      .filter((item) => item.store === "Udemy" && item.type === "external")
+      .map((item) => {
+        const udemyUrl = canonicalizeUdemyUrl(item.url);
+        const couponCodes = extractCouponCodes(item.url);
+
+        return {
+          udemyUrl,
+          title: item.name,
+          couponCodes,
+          sourceType: this.name,
+          scrapedAt: new Date(),
+        };
+      });
   }
 }
