@@ -220,7 +220,9 @@ The install directory is not writable. Reinstall to ~/.local/bin or fix its perm
     logger.error(
       `Update failed: ${error instanceof Error ? error.message : error}`
     );
-    process.exit(1);
+    // Defer termination until the event loop drains so the finally block can
+    // release the update lock first.
+    process.exitCode = 1;
   } finally {
     if (lockAcquired) {
       releaseLock();

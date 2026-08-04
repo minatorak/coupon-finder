@@ -8,6 +8,11 @@ interface LockFile {
   timestamp: number;
 }
 
+interface LockOptions {
+  lockPath?: string;
+  isProcessRunning?: (pid: number) => boolean;
+}
+
 const LOCK_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 function getLockFilePath(): string {
@@ -15,8 +20,19 @@ function getLockFilePath(): string {
   return join(installDir, ".coupon-finder-update.lock");
 }
 
-export function acquireLock(): void {
-  const lockPath = getLockFilePath();
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM means the process exists but cannot be signalled by this user.
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+export function acquireLock(options: LockOptions = {}): void {
+  const lockPath = options.lockPath ?? getLockFilePath();
+  const processIsRunning = options.isProcessRunning ?? isProcessRunning;
 
   // Check if lock already exists and is still valid
   if (existsSync(lockPath)) {
@@ -25,14 +41,14 @@ export function acquireLock(): void {
       const lockData: LockFile = JSON.parse(content);
       const age = Date.now() - lockData.timestamp;
 
-      if (age < LOCK_TTL_MS) {
+      if (age < LOCK_TTL_MS && processIsRunning(lockData.pid)) {
         // Lock is still fresh
         throw new Error(
           `Update already in progress (PID ${lockData.pid}). Try again in a moment.`
         );
       }
 
-      // Lock has expired, remove it
+      // The lock has expired or its owner process no longer exists.
       logger.debug("Stale lock detected, removing...");
       unlinkSync(lockPath);
     } catch (error) {
@@ -67,8 +83,8 @@ export function acquireLock(): void {
   }
 }
 
-export function releaseLock(): void {
-  const lockPath = getLockFilePath();
+export function releaseLock(options: Pick<LockOptions, "lockPath"> = {}): void {
+  const lockPath = options.lockPath ?? getLockFilePath();
 
   try {
     if (existsSync(lockPath)) {
