@@ -1,231 +1,105 @@
-import { existsSync, chmodSync, renameSync, copyFileSync, unlinkSync, readdirSync } from "fs";
-import { basename, join, dirname } from "path";
+import { existsSync, readdirSync } from "fs";
+import { rm } from "fs/promises";
+import { join, resolve } from "path";
 import { logger } from "../utils/logger";
 import { VERSION } from "../version";
 import { validatePlatform } from "../utils/platform";
 import {
-  resolveInstalledBinary,
-  getInstallDirectory,
   checkWritePermissions,
+  getCurrentReleaseDirectory,
+  getInstallRoot,
+  installReleaseArchive,
   validateInstallLayout,
 } from "../utils/install";
 import { filterCompatibleReleases, formatReleaseMenu } from "../utils/releases";
 import { downloadToTemp, cleanupTemp } from "../utils/download";
-import { verifyChecksum, verifyManifestSignature } from "../utils/checksum";
+import { computeSHA256, verifyChecksum, verifyManifestSignature } from "../utils/checksum";
 import { acquireLock, releaseLock } from "../utils/lock";
 
 async function getUserSelection(prompt: string): Promise<number> {
-  return new Promise((resolve) => {
+  return new Promise((resolveSelection) => {
     process.stdout.write(prompt);
     process.stdin.setEncoding("utf8");
-    process.stdin.once("data", (data) => {
-      const input = data.toString().trim();
-      const num = parseInt(input, 10);
-      resolve(num);
-    });
+    process.stdin.once("data", (data) => resolveSelection(Number.parseInt(data.toString().trim(), 10)));
   });
 }
 
-function backupCurrentBinary(binaryPath: string): string {
-  const backupPath = join(
-    dirname(binaryPath),
-    `.${basename(binaryPath)}.backup-${Date.now()}.bak`,
-  );
-  copyFileSync(binaryPath, backupPath);
-  logger.debug(`Backup created: ${backupPath}`);
-
-  // Keep only latest 1 backup
-  const dir = dirname(binaryPath);
-  const backups = readdirSync(dir)
-    .filter((f) => f.startsWith(`.${basename(binaryPath)}.backup-`) && f.endsWith(".bak"))
-    .sort()
-    .reverse();
-
-  // Delete old backups (keep only latest)
-  for (let i = 1; i < backups.length; i++) {
+async function cleanupObsoleteReleases(current: string): Promise<void> {
+  const releases = join(getInstallRoot(), "releases");
+  if (!existsSync(releases)) return;
+  for (const name of readdirSync(releases)) {
+    const candidate = resolve(releases, name);
+    if (candidate === current) continue;
     try {
-      unlinkSync(join(dir, backups[i]));
-      logger.debug(`Deleted old backup: ${backups[i]}`);
-    } catch {
-      // ignore
+      await rm(candidate, { recursive: true, force: true });
+    } catch (error) {
+      logger.warn(`Could not remove obsolete release ${candidate}: ${error}`);
     }
   }
-
-  return backupPath;
 }
 
 export async function update(): Promise<void> {
   let lockAcquired = false;
-
+  const temporaryFiles: string[] = [];
   try {
-    // Step 1: Load current version
     console.log();
     logger.info(`Current version: v${VERSION}`);
     console.log();
-
-    // Step 2: Validate platform
     const platform = validatePlatform();
-    logger.debug(`Platform: ${platform}`);
-
-    // Step 3: Validate install layout
     validateInstallLayout();
-    const binaryPath = resolveInstalledBinary();
-    logger.debug(`Binary: ${binaryPath}`);
-
-    // Step 4: Acquire lock
+    const installRoot = getInstallRoot();
+    const currentRelease = getCurrentReleaseDirectory();
     acquireLock();
     lockAcquired = true;
+    await cleanupObsoleteReleases(currentRelease);
 
-    // Step 5: Fetch releases
     const releases = await filterCompatibleReleases(platform);
-
-    if (releases.length === 0) {
-      throw new Error("No compatible releases found.");
-    }
-
-    // Step 6: Show menu
-    const menu = formatReleaseMenu(releases);
-    const selection = await getUserSelection(menu);
-
-    if (isNaN(selection) || selection < 1 || selection > releases.length) {
+    const selection = await getUserSelection(formatReleaseMenu(releases));
+    if (Number.isNaN(selection) || selection < 1 || selection > releases.length) {
       console.log("Invalid selection.");
       return;
     }
-
-    const selectedRelease = releases[selection - 1];
-
-    // Step 7: Check if selected == current
-    if (selectedRelease.version === VERSION) {
+    const selected = releases[selection - 1];
+    if (selected.version === VERSION) {
       logger.info(`Already on v${VERSION}`);
       return;
     }
+    if (!(await checkWritePermissions())) throw new Error(`No write permission to ${installRoot}`);
+    logger.info(`Selected: v${selected.version}`);
 
-    console.log();
-    logger.info(`Selected: v${selectedRelease.version}`);
-
-    // Step 8: Check permissions
-    const hasPermission = await checkWritePermissions();
-    if (!hasPermission) {
-      logger.warn(`No write permission to ${getInstallDirectory()}`);
-      console.log(`
-The install directory is not writable. Reinstall to ~/.local/bin or fix its permissions.
-      `);
-      return;
+    const packageDownload = await downloadToTemp(selected.packageAsset.url, selected.packageAsset.name);
+    const checksumDownload = await downloadToTemp(selected.checksumAsset.url, selected.checksumAsset.name);
+    const signatureDownload = await downloadToTemp(selected.signatureAsset.url, selected.signatureAsset.name);
+    temporaryFiles.push(packageDownload.filePath, checksumDownload.filePath, signatureDownload.filePath);
+    if (!(await verifyManifestSignature(checksumDownload.filePath, signatureDownload.filePath))) {
+      throw new Error("Release signature verification failed. The installed release was not changed.");
     }
-
-    // Step 9: Download binary
-    let binaryResult: Awaited<ReturnType<typeof downloadToTemp>> | undefined;
-    let checksumResult: Awaited<ReturnType<typeof downloadToTemp>> | undefined;
-    let signatureResult: Awaited<ReturnType<typeof downloadToTemp>> | undefined;
-    let checksumText: string;
-
-    try {
-      binaryResult = await downloadToTemp(
-        selectedRelease.binaryAsset.url,
-        selectedRelease.binaryAsset.name
-      );
-
-      checksumResult = await downloadToTemp(
-        selectedRelease.checksumAsset.url,
-        selectedRelease.checksumAsset.name
-      );
-
-      signatureResult = await downloadToTemp(
-        selectedRelease.signatureAsset.url,
-        selectedRelease.signatureAsset.name
-      );
-
-      // Read checksum text
-      checksumText = await Bun.file(checksumResult.filePath).text();
-    } catch (error) {
-      if (binaryResult) {
-        await cleanupTemp(binaryResult.filePath);
-      }
-      if (checksumResult) {
-        await cleanupTemp(checksumResult.filePath);
-      }
-      if (signatureResult) {
-        await cleanupTemp(signatureResult.filePath);
-      }
-      throw error;
+    const checksumText = await Bun.file(checksumDownload.filePath).text();
+    if (!(await verifyChecksum(packageDownload.filePath, checksumText, selected.packageAsset.name))) {
+      throw new Error("Checksum verification failed. The installed release was not changed.");
     }
+    const hash = await computeSHA256(packageDownload.filePath);
+    const installed = await installReleaseArchive({
+      archivePath: packageDownload.filePath,
+      expectedVersion: selected.version,
+      expectedTarget: platform,
+      hashPrefix: hash.slice(0, 12),
+    });
 
-    // Step 10: Verify the signed manifest before trusting its checksum.
-    const signatureValid = await verifyManifestSignature(
-      checksumResult.filePath,
-      signatureResult.filePath,
-    );
-    if (!signatureValid) {
-      await cleanupTemp(binaryResult.filePath);
-      await cleanupTemp(checksumResult.filePath);
-      await cleanupTemp(signatureResult.filePath);
-      throw new Error("Release signature verification failed. Binary was not replaced.");
-    }
-
-    const checksumValid = await verifyChecksum(
-      binaryResult.filePath,
-      checksumText,
-      selectedRelease.binaryAsset.name
-    );
-
-    if (!checksumValid) {
-      await cleanupTemp(binaryResult.filePath);
-      await cleanupTemp(checksumResult.filePath);
-      await cleanupTemp(signatureResult.filePath);
-      throw new Error("Checksum verification failed. Binary may be corrupted.");
-    }
-
-    // Step 11: Backup current binary
-    const backupPath = backupCurrentBinary(binaryPath);
-
-    try {
-      // Step 12: Make binary executable
-      chmodSync(binaryResult.filePath, 0o755);
-
-      // Step 13: Atomic replace (rename)
-      renameSync(binaryResult.filePath, binaryPath);
-      logger.info(`✓ Updated: v${VERSION} → v${selectedRelease.version}`);
-
-      // Clean up checksum temp
-      await cleanupTemp(checksumResult.filePath);
-      await cleanupTemp(signatureResult.filePath);
-
-      // Step 14: Show summary
-      console.log();
-      console.log(`✅ Updated successfully!`);
-      console.log(`   v${VERSION} → v${selectedRelease.version}`);
-      console.log(`   Location: ${binaryPath}`);
-      console.log(`   Backup: ${backupPath}`);
-      console.log();
-      console.log(`⚠️  Restart your shell to use the new version:`);
-      console.log(`   exec $SHELL`);
-      console.log();
-    } catch (error) {
-      // Atomic replace failed - restore from backup
-      logger.error(`Atomic replace failed: ${error}`);
-
+    if (installed.oldRelease && installed.oldRelease !== installed.newRelease) {
       try {
-        if (existsSync(backupPath)) {
-          logger.warn("Restoring from backup...");
-          copyFileSync(backupPath, binaryPath);
-          logger.info("Restored from backup");
-        }
-      } catch (restoreError) {
-        logger.error(`Failed to restore from backup: ${restoreError}`);
+        await rm(installed.oldRelease, { recursive: true, force: true });
+      } catch (error) {
+        logger.warn(`Update succeeded, but the old release could not be removed: ${error}`);
       }
-
-      throw error;
     }
+    logger.info(`✓ Updated: v${VERSION} → v${selected.version}`);
+    console.log(`\n✅ Updated successfully!\n   v${VERSION} → v${selected.version}\n   Current: ${installed.newRelease}\n`);
   } catch (error) {
-    logger.error(
-      `Update failed: ${error instanceof Error ? error.message : error}`
-    );
-    // Defer termination until the event loop drains so the finally block can
-    // release the update lock first.
+    logger.error(`Update failed: ${error instanceof Error ? error.message : error}`);
     process.exitCode = 1;
   } finally {
-    if (lockAcquired) {
-      releaseLock();
-    }
+    await Promise.all(temporaryFiles.map(cleanupTemp));
+    if (lockAcquired) releaseLock();
   }
 }

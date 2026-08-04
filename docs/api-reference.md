@@ -160,41 +160,38 @@ coupon-finder update
 
 **Output:**
 ```
-ℹ️  Current version: v0.2.0
+ℹ️  Current version: v0.2.1
 
 📦 Available Versions:
 
-  [1] v0.2.0  (15.2MB, 2026-06-20)
-  [2] v0.1.1  (15.1MB, 2026-06-18)
-  [3] v0.1.0  (15.0MB, 2026-06-15)
+  [1] v0.2.2  (26.0MB, 2026-08-10)
+  [2] v0.2.1  (25.9MB, 2026-08-04)
 
 Enter number to select (1-3): 1
-ℹ️  Selected: v0.2.0
-Downloading coupon-finder-darwin-x64...
-Downloaded coupon-finder-darwin-x64: 15.20MB in 3.2s
+ℹ️  Selected: v0.2.2
+Downloading coupon-finder-darwin-x64.tar.gz...
+Downloaded coupon-finder-darwin-x64.tar.gz: 25.90MB in 3.2s
 ℹ️  Verifying checksum...
 ✓ Checksum verified
 ✅ Updated successfully!
-   v0.1.0 → v0.2.0
-   Location: /usr/local/bin/coupon-finder
-   Backup: /usr/local/bin/coupon-finder.backup-1718918400000.bak
-
-⚠️  Restart your shell to use the new version:
-   exec $SHELL
+   v0.2.1 → v0.2.2
+   Current: ~/.local/share/coupon-finder/releases/0.2.2-darwin-x64-<hash>
 ```
 
 **Features:**
 - Interactive version selection (numbered menu)
 - Supports downgrading to older versions
 - SHA256 checksum verification
-- Atomic binary replacement with backup
-- Automatic backup cleanup (keeps latest only)
+- Signed archive and release metadata validation
+- Staged and post-switch `--release-smoke` checks
+- Atomic `current` symlink replacement with rollback on failed smoke
+- Immediate old-release cleanup after success; no retained backup
 - Concurrency guard (prevents parallel updates)
 
 **Errors:**
-- "No compatible releases found" — Phase 6 CI/CD must upload binaries + checksums
+- "No compatible releases found" — the release has no archive for this target
 - "Update already in progress" — Another update is running (10-minute timeout)
-- "No write permission" — Install directory not writable (try with `sudo`)
+- "No write permission" — Install root is not writable; do not use `sudo`
 - "Checksum mismatch" — Downloaded file corrupted (automatic retry)
 - "Already on vX.Y.Z" — Already on selected version (no-op)
 
@@ -204,17 +201,26 @@ Downloaded coupon-finder-darwin-x64: 15.20MB in 3.2s
 - ✅ Linux x86_64 (linux-x64)
 - ❌ Windows (not supported; reinstall from source)
 
-**Shell restart required:**
-After updating, restart your shell to load the new binary:
+Every new invocation follows `current`, so update does not require a shell
+restart. Legacy single-binary layouts should try update once, then use
+`uninstall.sh --yes` and reinstall if update reports an unsupported layout.
+
+### Distribution maintenance interfaces
+
+`coupon-finder --release-smoke` is an internal, network-free validation that
+loads packaged Playwright and resolves Firefox and Chromium metadata. The
+installer and updater invoke it automatically.
+
+Clean uninstall supports `--help` and `--yes` only:
+
 ```bash
-exec $SHELL
+curl -fsSL https://raw.githubusercontent.com/minatorak/coupon-finder/main/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/minatorak/coupon-finder/main/uninstall.sh | bash -s -- --yes
 ```
 
-**Permission denied:**
-If you see a permission error, run with `sudo`:
-```bash
-coupon-finder update
-```
+It removes application-owned installs, data, results, logs, browser cache, and
+managed PATH blocks. External `resultsDir` directories and legacy shared
+Playwright caches are reported but never deleted automatically.
 
 ---
 

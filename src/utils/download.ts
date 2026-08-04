@@ -2,7 +2,7 @@ import { writeFile, unlink } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
 import { logger } from "./logger";
-import { getInstallDirectory } from "./install";
+import { getInstallRoot } from "./install";
 
 interface DownloadResult {
   filePath: string;
@@ -85,7 +85,7 @@ export async function downloadToTemp(
   url: string,
   fileName: string
 ): Promise<DownloadResult> {
-  const installDir = getInstallDirectory();
+  const installDir = getInstallRoot();
   const tempFile = join(installDir, `.coupon-finder-${fileName}-${Date.now()}.tmp`);
 
   const startTime = Date.now();

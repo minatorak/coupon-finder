@@ -1,24 +1,24 @@
 # Distribution glossary
 
-- **Release binary**: A standalone executable compiled with Bun for one
-  platform and architecture, published as a GitHub Release asset.
-- **Installer**: `install.sh`, which selects, verifies, and installs a release
-  binary.
-- **Development run**: Executing TypeScript from the repository with Bun; this
-  is not an installed end-user distribution.
-- **Update layout**: An installation in which `coupon-finder` itself is the
-  executable replaced by `coupon-finder update`.
-- **Supported desktop targets**: `darwin-arm64`, `darwin-x64`, and `linux-x64`
-  in the first binary release.
-- **Deferred Android support**: Android/Termux is intentionally unsupported in
-  the first release; a Linux ARM64 executable is not an Android artifact.
-- **Managed PATH block**: A labelled installer-owned shell configuration block
-  that adds `~/.local/bin` to `PATH` exactly once without altering user content.
-- **Release tag**: A Git tag in the form `vX.Y.Z` that authoritatively triggers
-  the build, checksum, and GitHub Release workflow.
-- **Signed checksum manifest**: The release-wide SHA-256 manifest plus a
-  detached signature, verified before trusting a binary checksum.
-- **Release public key**: The PEM public key embedded in the installer and
-  updater; it verifies the CI-produced RSA signature on a checksum manifest.
-- **System browser**: An existing Firefox, Chrome, or Brave executable selected
-  by the application; Playwright-managed browser downloads are not installed.
+- **Release Archive**: A target-specific `.tar.gz` containing one
+  `coupon-finder/` package tree and published as a GitHub Release asset.
+- **Runtime**: The Bun-compiled `bin/coupon-finder-runtime` executable.
+- **Launcher**: `~/.local/bin/coupon-finder`; it sets the install root,
+  packaged-only `NODE_PATH`, and dedicated browser path before executing the
+  current runtime.
+- **Install Root**: `~/.local/share/coupon-finder`, which owns releases,
+  `current`, update locks, and downloaded browsers.
+- **Immutable Release**: A verified directory below `releases/` named from its
+  version, target, and archive hash prefix. It is never edited in place.
+- **Current Symlink**: The atomically replaced `current` link selecting the
+  immutable release used by every new launcher invocation.
+- **Dedicated Browser Cache**: The coupon-finder-only `browsers/` directory
+  under the install root. Uninstall removes it.
+- **Legacy Layout**: The v0.1.0/v0.2.0 single executable and adjacent lock or
+  backup files. It is unsupported by the archive updater and removable by
+  `uninstall.sh`.
+- **Managed PATH block**: The labelled installer-owned shell configuration
+  block. Installer and uninstaller do not change content outside its markers.
+- **Signed checksum manifest**: `checksums.txt` plus its detached RSA/SHA-256
+  signature, verified before an archive checksum is trusted.
+- **Supported targets**: `darwin-arm64`, `darwin-x64`, and `linux-x64`.

@@ -1,7 +1,7 @@
 import { writeFileSync, existsSync, unlinkSync, readFileSync } from "fs";
 import { join } from "path";
 import { logger } from "./logger";
-import { getInstallDirectory } from "./install";
+import { getInstallRoot } from "./install";
 
 interface LockFile {
   pid: number;
@@ -16,7 +16,7 @@ interface LockOptions {
 const LOCK_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 function getLockFilePath(): string {
-  const installDir = getInstallDirectory();
+  const installDir = getInstallRoot();
   return join(installDir, ".coupon-finder-update.lock");
 }
 
@@ -39,6 +39,9 @@ export function acquireLock(options: LockOptions = {}): void {
     try {
       const content = readFileSync(lockPath, "utf-8");
       const lockData: LockFile = JSON.parse(content);
+      if (!Number.isInteger(lockData.pid) || lockData.pid <= 0 || !Number.isFinite(lockData.timestamp)) {
+        throw new SyntaxError("Invalid lock data");
+      }
       const age = Date.now() - lockData.timestamp;
 
       if (age < LOCK_TTL_MS && processIsRunning(lockData.pid)) {
@@ -74,12 +77,14 @@ export function acquireLock(options: LockOptions = {}): void {
   };
 
   try {
-    writeFileSync(lockPath, JSON.stringify(lockData), "utf-8");
+    writeFileSync(lockPath, JSON.stringify(lockData), { encoding: "utf-8", flag: "wx" });
     logger.debug(`Lock acquired: ${lockPath}`);
   } catch (error) {
-    throw new Error(
-      `Failed to acquire lock: ${error instanceof Error ? error.message : error}`
-    );
+    const detail = error instanceof Error ? error.message : String(error);
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw new Error("Update already in progress. Try again in a moment.");
+    }
+    throw new Error(`Failed to acquire lock: ${detail}`);
   }
 }
 
