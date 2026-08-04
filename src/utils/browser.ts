@@ -7,6 +7,11 @@ import { logger } from "./logger";
 
 type SystemBrowser = Exclude<BrowserType, "chromium">;
 
+export interface BrowserLaunchTarget {
+  engine: "firefox" | "chromium";
+  executablePath?: string;
+}
+
 function isExecutable(path: string): boolean {
   try {
     accessSync(path, constants.X_OK);
@@ -86,23 +91,42 @@ export function findBrowserExecutable(browser: BrowserType): string {
   );
 }
 
+export function resolveBrowserLaunchTarget(
+  browserType: BrowserType,
+): BrowserLaunchTarget {
+  const engine = browserType === "firefox" ? "firefox" : "chromium";
+
+  // Playwright's Firefox protocol requires its matching patched Firefox build.
+  // A custom path remains available for a compatible build, but stock Firefox
+  // must not be selected automatically.
+  if (browserType === "firefox" && !process.env.COUPON_FINDER_BROWSER_PATH) {
+    return { engine };
+  }
+
+  return {
+    engine,
+    executablePath: findBrowserExecutable(browserType),
+  };
+}
+
 export async function setupBrowser(
   headless = true,
   browserType: BrowserType = "firefox",
 ): Promise<Browser> {
-  const executablePath = findBrowserExecutable(browserType);
-  const isFirefox = browserType === "firefox";
+  const target = resolveBrowserLaunchTarget(browserType);
+  const executableLabel =
+    target.executablePath ?? `${firefox.executablePath()} (Playwright)`;
   logger.debug(
-    `Setting up ${browserType} at ${executablePath} (headless: ${headless})`,
+    `Setting up ${browserType} at ${executableLabel} (headless: ${headless})`,
   );
 
   const launchOptions = {
     headless,
-    executablePath,
-    args: isFirefox ? [] : ["--disable-images"],
+    executablePath: target.executablePath,
+    args: target.engine === "firefox" ? [] : ["--disable-images"],
   };
 
-  return isFirefox
+  return target.engine === "firefox"
     ? firefox.launch(launchOptions)
     : chromium.launch(launchOptions);
 }
