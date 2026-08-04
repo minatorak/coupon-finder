@@ -63,6 +63,10 @@ const command = [
   "--compile",
   `--target=${TARGETS[target]}`,
   "--external=electron",
+  // Playwright loads Chromium BiDi support lazily. It is not shipped as a
+  // dependency and Firefox/Chromium launch does not use it, so Bun must leave
+  // these optional requires unresolved in the compiled binary.
+  "--external=chromium-bidi/*",
   `--outfile=${outputPath}`,
   resolve(projectRoot, "src/cli.ts"),
 ];

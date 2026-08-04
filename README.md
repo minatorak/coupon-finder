@@ -11,7 +11,7 @@ Coupon-finder is a command-line tool that automates discovering free Udemy cours
 - 📊 **Deduplication:** Automatically merges results by course URL, keeping the best coupon code
 - 🚀 **Auto-enrollment:** Batch-enroll in courses with valid coupons
 - ⚙️ **Configurable:** TOML config at `~/.coupon-finder/config.toml`
-- 📦 **Self-contained:** Single executable, no Python or Node.js required
+- 📦 **Single CLI executable:** No Python or Node.js runtime required after browser setup
 - 🧹 **Auto-cleanup:** Deletes result files older than 3 days
 
 ## Installation
@@ -307,8 +307,12 @@ command and investigate the release before bypassing verification.
 
 ### Missing browser
 
-Install Firefox, Chrome, or Brave and log in to Udemy there. The application
-does not download or manage browser binaries during installation.
+Install Firefox, Chrome, or Brave and log in to Udemy there. The selected
+system browser supplies the Udemy session. On the first `find` or `run`, the
+application downloads a matching Playwright Firefox or Chromium only when the
+selected Firefox/Chrome automation browser is missing. Later runs reuse the
+cached download. Brave automation uses installed Brave because Playwright does
+not provide a bundled Brave build.
 
 ### "Not logged in" error
 

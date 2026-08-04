@@ -138,7 +138,7 @@ For more info, visit: https://github.com/minatorak/coupon-finder
   `);
 }
 
-main().catch((error) => {
+await main().catch((error) => {
   logger.error(`Fatal error: ${error instanceof Error ? error.message : error}`);
   process.exit(1);
 });
