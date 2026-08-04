@@ -3,6 +3,10 @@ import { homedir } from "os";
 import { delimiter, join } from "path";
 import { Browser, chromium, firefox } from "playwright";
 import { BrowserType } from "../types";
+import {
+  ensureManagedBrowser,
+  ManagedBrowser,
+} from "./browser-installer";
 import { logger } from "./logger";
 
 type SystemBrowser = Exclude<BrowserType, "chromium">;
@@ -10,6 +14,7 @@ type SystemBrowser = Exclude<BrowserType, "chromium">;
 export interface BrowserLaunchTarget {
   engine: "firefox" | "chromium";
   executablePath?: string;
+  managedBrowser?: ManagedBrowser;
 }
 
 function isExecutable(path: string): boolean {
@@ -95,12 +100,13 @@ export function resolveBrowserLaunchTarget(
   browserType: BrowserType,
 ): BrowserLaunchTarget {
   const engine = browserType === "firefox" ? "firefox" : "chromium";
+  const override = process.env.COUPON_FINDER_BROWSER_PATH;
 
-  // Playwright's Firefox protocol requires its matching patched Firefox build.
-  // A custom path remains available for a compatible build, but stock Firefox
-  // must not be selected automatically.
-  if (browserType === "firefox" && !process.env.COUPON_FINDER_BROWSER_PATH) {
-    return { engine };
+  if (!override && browserType === "firefox") {
+    return { engine, managedBrowser: "firefox" };
+  }
+  if (!override && (browserType === "chrome" || browserType === "chromium")) {
+    return { engine, managedBrowser: "chromium" };
   }
 
   return {
@@ -114,15 +120,16 @@ export async function setupBrowser(
   browserType: BrowserType = "firefox",
 ): Promise<Browser> {
   const target = resolveBrowserLaunchTarget(browserType);
-  const executableLabel =
-    target.executablePath ?? `${firefox.executablePath()} (Playwright)`;
+  const executablePath = target.managedBrowser
+    ? await ensureManagedBrowser(target.managedBrowser)
+    : target.executablePath;
   logger.debug(
-    `Setting up ${browserType} at ${executableLabel} (headless: ${headless})`,
+    `Setting up ${browserType} at ${executablePath} (headless: ${headless})`,
   );
 
   const launchOptions = {
     headless,
-    executablePath: target.executablePath,
+    executablePath,
     args: target.engine === "firefox" ? [] : ["--disable-images"],
   };
 

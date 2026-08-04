@@ -7,7 +7,6 @@ Thanks for your interest in contributing! Here's how to get started.
 ```bash
 cd coupon-finder
 bun install
-bunx playwright install firefox
 bun run src/cli.ts --help
 ```
 

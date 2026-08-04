@@ -307,16 +307,12 @@ command and investigate the release before bypassing verification.
 
 ### Missing browser
 
-Install Firefox, Chrome, or Brave and log in to Udemy there. When Firefox is
-selected, scraping uses the Firefox build matched to the installed Playwright
-version because stock Firefox does not support Playwright's automation
-protocol. Source installations can install that build with:
-
-```bash
-bunx playwright install firefox
-```
-
-Chrome and Brave scraping use the installed system browser.
+Install Firefox, Chrome, or Brave and log in to Udemy there. The selected
+system browser supplies the Udemy session. On the first `find` or `run`, the
+application downloads a matching Playwright Firefox or Chromium only when the
+selected Firefox/Chrome automation browser is missing. Later runs reuse the
+cached download. Brave automation uses installed Brave because Playwright does
+not provide a bundled Brave build.
 
 ### "Not logged in" error
 

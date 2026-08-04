@@ -33,6 +33,16 @@ describe("resolveBrowserLaunchTarget", () => {
 
     expect(resolveBrowserLaunchTarget("firefox")).toEqual({
       engine: "firefox",
+      managedBrowser: "firefox",
+    });
+  });
+
+  test("uses Playwright's bundled Chromium for Chrome by default", () => {
+    delete process.env.COUPON_FINDER_BROWSER_PATH;
+
+    expect(resolveBrowserLaunchTarget("chrome")).toEqual({
+      engine: "chromium",
+      managedBrowser: "chromium",
     });
   });
 
