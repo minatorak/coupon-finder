@@ -16,7 +16,7 @@ export interface GitHubRelease {
 export interface ReleaseWithAssets {
   version: string;
   tagName: string;
-  binaryAsset: {
+  packageAsset: {
     name: string;
     url: string;
     size: number;
@@ -125,26 +125,33 @@ export async function filterCompatibleReleases(
     );
   }
 
-  // Find compatible assets
+  return selectCompatibleReleases(filtered, platform);
+}
+
+export function selectCompatibleReleases(
+  filtered: GitHubRelease[],
+  platform: SupportedPlatform,
+): ReleaseWithAssets[] {
+  // Find compatible archive assets. Legacy raw binaries are intentionally ignored.
   const compatible: ReleaseWithAssets[] = [];
 
   for (const release of filtered) {
-    const binaryName = `coupon-finder-${platform}`;
+    const packageName = `coupon-finder-${platform}.tar.gz`;
     const checksumName = "checksums.txt";
     const signatureName = "checksums.txt.sig";
 
-    const binaryAsset = release.assets.find((a) => a.name === binaryName);
+    const packageAsset = release.assets.find((a) => a.name === packageName);
     const checksumAsset = release.assets.find((a) => a.name === checksumName);
     const signatureAsset = release.assets.find((a) => a.name === signatureName);
 
-    if (binaryAsset && checksumAsset && signatureAsset) {
+    if (packageAsset && checksumAsset && signatureAsset) {
       compatible.push({
         version: release.tag_name.replace(/^v/, ""),
         tagName: release.tag_name,
-        binaryAsset: {
-          name: binaryAsset.name,
-          url: binaryAsset.browser_download_url,
-          size: binaryAsset.size,
+        packageAsset: {
+          name: packageAsset.name,
+          url: packageAsset.browser_download_url,
+          size: packageAsset.size,
         },
         checksumAsset: {
           name: checksumAsset.name,
@@ -179,7 +186,7 @@ export function formatReleaseMenu(releases: ReleaseWithAssets[]): string {
   let menu = "\n📦 Available Versions:\n\n";
 
   releases.forEach((r, i) => {
-    const size = (r.binaryAsset.size / 1024 / 1024).toFixed(1);
+    const size = (r.packageAsset.size / 1024 / 1024).toFixed(1);
     const date = new Date(r.publishedAt).toLocaleDateString();
     menu += `  [${i + 1}] v${r.version}  (${size}MB, ${date})\n`;
   });

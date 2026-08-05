@@ -11,6 +11,20 @@ import { VERSION } from "./version";
 import { FindOptions } from "./commands/find";
 import { SourceType } from "./types";
 
+export async function releaseSmoke(): Promise<void> {
+  const [{ chromium, firefox }, { registry }] = await Promise.all([
+    import("playwright"),
+    import("playwright-core/lib/coreBundle"),
+  ]);
+  if (!chromium || !firefox) throw new Error("Packaged Playwright browser types are unavailable.");
+  for (const browser of ["chromium", "firefox"] as const) {
+    const executable = registry.registry.findExecutable(browser);
+    if (!executable?.directory || !executable.executablePath() || executable.downloadURLs.length === 0) {
+      throw new Error(`Packaged Playwright metadata is unavailable for ${browser}.`);
+    }
+  }
+}
+
 function parseFindOptions(args: string[]): FindOptions {
   const options: FindOptions = {};
 
@@ -49,6 +63,10 @@ async function main() {
       case "--version":
       case "-v":
         console.log(`coupon-finder v${VERSION}`);
+        break;
+
+      case "--release-smoke":
+        await releaseSmoke();
         break;
 
       case "whoami":

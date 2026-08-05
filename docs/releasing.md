@@ -1,31 +1,36 @@
 # Releasing coupon-finder
 
-Releases are created by pushing an exact `vX.Y.Z` tag. The workflow builds the
-three native executables, creates `checksums.txt`, signs it with RSA/SHA-256,
-re-verifies every asset, and publishes the five-file release contract.
+A pushed `vX.Y.Z` tag builds and publishes exactly five assets:
 
-Before the first release, configure the repository secret
-`RELEASE_SIGNING_PRIVATE_KEY` with the PEM private key that corresponds to
-`keys/release-public.pem`. Keep the private key outside the repository and only
-store it in the protected GitHub Actions secret.
+```text
+coupon-finder-darwin-arm64.tar.gz
+coupon-finder-darwin-x64.tar.gz
+coupon-finder-linux-x64.tar.gz
+checksums.txt
+checksums.txt.sig
+```
 
-Local checks before tagging:
+Each archive has one `coupon-finder/` root containing `RELEASE`, the launcher,
+the compiled Bun runtime, and locked `playwright`/`playwright-core` packages.
+Browser binaries are deliberately excluded and downloaded to the dedicated
+cache on first use.
+
+Configure `RELEASE_SIGNING_PRIVATE_KEY` with the PEM private key matching
+`keys/release-public.pem`. The workflow builds natively, extracts outside the
+checkout, runs `--release-smoke` with a clean home and packaged dependencies,
+scans for checkout paths, signs and re-verifies all archives, enforces the
+exact asset count, then exercises install and uninstall before publishing.
+
+Local gates:
 
 ```bash
 bun install --frozen-lockfile
 bun run check:version
+bun run check:release-key
 bunx tsc --noEmit
 bun test
-bun run build:release -- --target darwin-arm64
+bun run build:release -- --target darwin-x64
 ```
 
-The tag must match `package.json` and `src/version.ts`:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The workflow deliberately fails if the tag/version differs, an expected
-executable is missing, signature verification fails, or the GitHub Release
-already exists.
+The tag must match `package.json` and `src/version.ts`. Release v0.2.1 with a
+new tag; do not modify or rebuild assets attached to `v0.2.0`.

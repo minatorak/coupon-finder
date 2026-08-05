@@ -2,7 +2,7 @@
 
 > **Find, check, and claim free Udemy courses from multiple coupon sources — all from one command.**
 
-Coupon-finder is a command-line tool that automates discovering free Udemy courses from multiple coupon websites and auto-enrolls you via your Udemy account. Built with Bun & TypeScript for fast, single-binary distribution.
+Coupon-finder is a command-line tool that automates discovering free Udemy courses from multiple coupon websites and auto-enrolls you via your Udemy account. It ships as a self-contained platform archive with its Bun runtime and Playwright libraries.
 
 ## Features
 
@@ -11,14 +11,15 @@ Coupon-finder is a command-line tool that automates discovering free Udemy cours
 - 📊 **Deduplication:** Automatically merges results by course URL, keeping the best coupon code
 - 🚀 **Auto-enrollment:** Batch-enroll in courses with valid coupons
 - ⚙️ **Configurable:** TOML config at `~/.coupon-finder/config.toml`
-- 📦 **Single CLI executable:** No Python or Node.js runtime required after browser setup
+- 📦 **Self-contained release:** No separate Bun, Node.js, or Playwright install required
 - 🧹 **Auto-cleanup:** Deletes result files older than 3 days
 
 ## Installation
 
-The installer downloads a signed, platform-specific executable from GitHub
+The installer downloads a signed, platform-specific archive from GitHub
 Releases. Bun is only needed for development; it is not required on the user's
-machine.
+machine. The first automation run downloads Firefox or Chromium into the
+coupon-finder-only browser cache at `~/.local/share/coupon-finder/browsers`.
 
 Supported release targets:
 
@@ -26,7 +27,7 @@ Supported release targets:
 - macOS Intel (`darwin-x64`)
 - Linux x64 (`linux-x64`)
 
-Before installing, ensure `curl` and `openssl` are available, and install a
+Before installing, ensure `curl`, `openssl`, and `tar` are available, and install a
 supported system browser (Firefox, Chrome, or Brave) with an active Udemy
 session. Android/Termux, Windows, and Linux ARM64 are not supported yet.
 
@@ -34,7 +35,8 @@ session. Android/Termux, Windows, and Linux ARM64 are not supported yet.
 curl -fsSL https://raw.githubusercontent.com/minatorak/coupon-finder/main/install.sh | bash
 ```
 
-The installer places the executable at `~/.local/bin/coupon-finder`, adds that
+The installer places a launcher at `~/.local/bin/coupon-finder`, installs an
+immutable release below `~/.local/share/coupon-finder/releases`, adds that
 directory to the detected zsh/bash startup file once, and never uses `sudo`.
 Open a new terminal after installation, then verify:
 
@@ -42,6 +44,20 @@ Open a new terminal after installation, then verify:
 ```bash
 coupon-finder --help
 ```
+
+### Updating, migration, and uninstalling
+
+```bash
+coupon-finder update
+curl -fsSL https://raw.githubusercontent.com/minatorak/coupon-finder/main/uninstall.sh | bash
+# Non-interactive:
+curl -fsSL https://raw.githubusercontent.com/minatorak/coupon-finder/main/uninstall.sh | bash -s -- --yes
+```
+
+For v0.1.0 or v0.2.0, try `coupon-finder update` first. If the legacy binary
+cannot update, run the non-interactive uninstall command and then install
+again. A successful update removes the previous immutable release immediately;
+no backup is retained and a shell restart is unnecessary.
 
 ## Quick Start
 
