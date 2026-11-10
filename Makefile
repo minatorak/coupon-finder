@@ -2,12 +2,9 @@
 
 CLI := bun run src/cli.ts
 RELEASE_TARGET ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m | sed 's/x86_64/x64/; s/aarch64/arm64/')
-TEST_BROWSER ?= firefox
-TEST_SOURCE ?= couponscorpion
 
 .PHONY: help install dev cli-help version whoami config find list claim run update \
-	type-check test build build-release find-fast results test-browser \
-	test-firefox test-chrome test-brave browser-firefox browser-chrome browser-brave
+	type-check test build build-release find-fast results
 
 help:
 	@printf '%s\n' 'coupon-finder Makefile'
@@ -32,11 +29,7 @@ help:
 	@printf '%s\n' '  make build-release RELEASE_TARGET=darwin-arm64  Build a named release target'
 	@printf '%s\n' ''
 	@printf '%s\n' 'Safe shortcuts:'
-	@printf '%s\n' '  make find-fast   Scrape one page from couponami'
-	@printf '%s\n' '  make test-firefox  Select Firefox and scrape one page'
-	@printf '%s\n' '  make test-chrome   Select Chrome and scrape one page'
-	@printf '%s\n' '  make test-brave    Select Brave and scrape one page'
-	@printf '%s\n' '  make test-browser TEST_BROWSER=firefox TEST_SOURCE=couponscorpion'
+	@printf '%s\n' '  make find-fast   Scrape one page from realdiscount'
 	@printf '%s\n' '  make results     List saved result files'
 
 install:
@@ -58,7 +51,7 @@ config:
 	$(CLI) config
 
 find:
-	$(CLI) find --pages 1
+	$(CLI) find
 
 list:
 	$(CLI) list
@@ -67,7 +60,7 @@ claim:
 	$(CLI) claim
 
 run:
-	$(CLI) run --pages 1
+	$(CLI) run --pages 10
 
 update:
 	$(CLI) update
@@ -86,32 +79,6 @@ build-release:
 
 find-fast:
 	$(CLI) find --source couponami --pages 1
-
-browser-firefox:
-	$(CLI) config --set browser=firefox
-
-browser-chrome:
-	$(CLI) config --set browser=chrome
-
-browser-brave:
-	$(CLI) config --set browser=brave
-
-test-browser:
-	@case "$(TEST_BROWSER)" in firefox|chrome|brave) ;; *) \
-		echo "TEST_BROWSER must be firefox, chrome, or brave"; exit 2 ;; esac
-	@case "$(TEST_SOURCE)" in realdiscount|couponscorpion|udemyxpert|couponami) ;; *) \
-		echo "TEST_SOURCE must be realdiscount, couponscorpion, udemyxpert, or couponami"; exit 2 ;; esac
-	$(CLI) config --set browser=$(TEST_BROWSER)
-	$(CLI) find --source $(TEST_SOURCE) --pages 1 --no-source-parallel
-
-test-firefox:
-	$(MAKE) test-browser TEST_BROWSER=firefox TEST_SOURCE=$(TEST_SOURCE)
-
-test-chrome:
-	$(MAKE) test-browser TEST_BROWSER=chrome TEST_SOURCE=$(TEST_SOURCE)
-
-test-brave:
-	$(MAKE) test-browser TEST_BROWSER=brave TEST_SOURCE=$(TEST_SOURCE)
 
 results:
 	@bun -e 'import { readdir } from "fs/promises"; import { loadConfig } from "./src/config.ts"; const { resultsDir } = await loadConfig(); try { const files = (await readdir(resultsDir)).filter((file) => file.endsWith(".json")).sort().reverse(); console.log(files.length ? files.join("\n") : "No result files in " + resultsDir); } catch { console.log("No results directory: " + resultsDir); }'

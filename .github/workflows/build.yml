@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  BUN_VERSION: "1.3.13"
+  BUN_VERSION: "1.4.4"
 
 jobs:
   quality:
@@ -63,32 +63,19 @@ jobs:
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build release archive
+      - name: Build release executable
         run: bun run build:release -- --target "${{ matrix.target }}" --output-dir dist/release
 
-      - name: Extract and smoke-test packaged runtime
-        shell: bash
+      - name: Smoke-test executable
         run: |
-          set -euo pipefail
-          extracted="$(mktemp -d)"
-          clean_home="$(mktemp -d)"
-          tar -xzf "dist/release/coupon-finder-${{ matrix.target }}.tar.gz" -C "${extracted}"
-          env -i HOME="${clean_home}" PATH="/usr/bin:/bin" \
-            COUPON_FINDER_INSTALL_ROOT="${clean_home}/.local/share/coupon-finder" \
-            NODE_PATH="${extracted}/coupon-finder/lib/node_modules" \
-            PLAYWRIGHT_BROWSERS_PATH="${clean_home}/.local/share/coupon-finder/browsers" \
-            "${extracted}/coupon-finder/bin/coupon-finder-runtime" --release-smoke
-          "${extracted}/coupon-finder/bin/coupon-finder-runtime" --version
-          if grep -a -R -E "${GITHUB_WORKSPACE}/node_modules|/Users/runner/work/[^/]+/[^/]+/node_modules" "${extracted}/coupon-finder"; then
-            echo "release contains an absolute checkout dependency path" >&2
-            exit 1
-          fi
+          ./dist/release/coupon-finder-${{ matrix.target }} --version
+          ./dist/release/coupon-finder-${{ matrix.target }} --help >/dev/null
 
-      - name: Upload release archive
+      - name: Upload release executable
         uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.target }}
-          path: dist/release/coupon-finder-${{ matrix.target }}.tar.gz
+          path: dist/release/coupon-finder-${{ matrix.target }}
           if-no-files-found: error
           retention-days: 7
 
@@ -102,7 +89,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Download release archives
+      - name: Download release executables
         uses: actions/download-artifact@v8
         with:
           path: artifacts
@@ -113,9 +100,10 @@ jobs:
           set -euo pipefail
           mkdir -p release
           for target in darwin-arm64 darwin-x64 linux-x64; do
-            source="artifacts/release-${target}/coupon-finder-${target}.tar.gz"
+            source="artifacts/release-${target}/coupon-finder-${target}"
             test -f "${source}"
-            cp "${source}" "release/coupon-finder-${target}.tar.gz"
+            cp "${source}" "release/coupon-finder-${target}"
+            chmod 0755 "release/coupon-finder-${target}"
           done
 
       - name: Create stable checksum manifest
@@ -125,9 +113,9 @@ jobs:
           (
             cd release
             sha256sum \
-              coupon-finder-darwin-arm64.tar.gz \
-              coupon-finder-darwin-x64.tar.gz \
-              coupon-finder-linux-x64.tar.gz \
+              coupon-finder-darwin-arm64 \
+              coupon-finder-darwin-x64 \
+              coupon-finder-linux-x64 \
               | LC_ALL=C sort -k2,2
           ) > release/checksums.txt
 
@@ -159,9 +147,9 @@ jobs:
         run: |
           set -euo pipefail
           expected=(
-            coupon-finder-darwin-arm64.tar.gz
-            coupon-finder-darwin-x64.tar.gz
-            coupon-finder-linux-x64.tar.gz
+            coupon-finder-darwin-arm64
+            coupon-finder-darwin-x64
+            coupon-finder-linux-x64
             checksums.txt
             checksums.txt.sig
           )
@@ -169,20 +157,6 @@ jobs:
             test -f "release/${asset}"
           done
           test "$(find release -maxdepth 1 -type f | wc -l | tr -d ' ')" -eq "${#expected[@]}"
-
-      - name: Installer and uninstaller end-to-end
-        shell: bash
-        run: |
-          set -euo pipefail
-          test_home="$(mktemp -d)"
-          COUPON_FINDER_DOWNLOAD_BASE_URL="file://${PWD}/release" \
-          COUPON_FINDER_EXPECTED_VERSION="${GITHUB_REF_NAME#v}" \
-          HOME="${test_home}" SHELL=/bin/bash bash install.sh
-          HOME="${test_home}" "${test_home}/.local/bin/coupon-finder" --version
-          HOME="${test_home}" "${test_home}/.local/bin/coupon-finder" --release-smoke
-          HOME="${test_home}" bash uninstall.sh --yes
-          test ! -e "${test_home}/.local/bin/coupon-finder"
-          test ! -e "${test_home}/.local/share/coupon-finder"
 
       - name: Fail if the GitHub Release already exists
         env:

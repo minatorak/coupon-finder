@@ -3,19 +3,9 @@ import { homedir } from "os";
 import { delimiter, join } from "path";
 import { Browser, chromium, firefox } from "playwright";
 import { BrowserType } from "../types";
-import {
-  ensureManagedBrowser,
-  ManagedBrowser,
-} from "./browser-installer";
 import { logger } from "./logger";
 
 type SystemBrowser = Exclude<BrowserType, "chromium">;
-
-export interface BrowserLaunchTarget {
-  engine: "firefox" | "chromium";
-  executablePath?: string;
-  managedBrowser?: ManagedBrowser;
-}
 
 function isExecutable(path: string): boolean {
   try {
@@ -96,33 +86,12 @@ export function findBrowserExecutable(browser: BrowserType): string {
   );
 }
 
-export function resolveBrowserLaunchTarget(
-  browserType: BrowserType,
-): BrowserLaunchTarget {
-  const engine = browserType === "firefox" ? "firefox" : "chromium";
-  const override = process.env.COUPON_FINDER_BROWSER_PATH;
-
-  if (!override && browserType === "firefox") {
-    return { engine, managedBrowser: "firefox" };
-  }
-  if (!override && (browserType === "chrome" || browserType === "chromium")) {
-    return { engine, managedBrowser: "chromium" };
-  }
-
-  return {
-    engine,
-    executablePath: findBrowserExecutable(browserType),
-  };
-}
-
 export async function setupBrowser(
   headless = true,
   browserType: BrowserType = "firefox",
 ): Promise<Browser> {
-  const target = resolveBrowserLaunchTarget(browserType);
-  const executablePath = target.managedBrowser
-    ? await ensureManagedBrowser(target.managedBrowser)
-    : target.executablePath;
+  const executablePath = findBrowserExecutable(browserType);
+  const isFirefox = browserType === "firefox";
   logger.debug(
     `Setting up ${browserType} at ${executablePath} (headless: ${headless})`,
   );
@@ -130,10 +99,10 @@ export async function setupBrowser(
   const launchOptions = {
     headless,
     executablePath,
-    args: target.engine === "firefox" ? [] : ["--disable-images"],
+    args: isFirefox ? [] : ["--disable-images"],
   };
 
-  return target.engine === "firefox"
+  return isFirefox
     ? firefox.launch(launchOptions)
     : chromium.launch(launchOptions);
 }

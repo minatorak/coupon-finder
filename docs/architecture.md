@@ -1,112 +1,142 @@
-# coupon-finder Architecture
+# Architecture
 
-## Overview
+`coupon-finder` is Bun and TypeScript CLI that discovers Udemy offers, verifies account and coupon state, and opens claimable course pages for manual enrollment.
 
-coupon-finder is a CLI tool built with Bun + TypeScript that:
-1. Reads Udemy browser sessions (Firefox, Chrome, Brave)
-2. Scrapes source pages from 4 coupon sites
-3. Opens course pages with configurable concurrency to resolve Udemy URLs and coupon codes
-4. Deduplicates and merges results by URL
-5. Checks enrollment status via Udemy API
-6. Open udemy url with coupon code (for Free or discount 100% off) as batch
+## Workflow
 
-## Design Principles
-
-- **Plugin architecture:** Browsers and scrapers are pluggable
-- **Session-aware:** Reads active browser cookies, no separate login
-- **Deduplication:** Collects all coupon codes per course, keeps best discount
-- **Error resilience:** Retries failed scrapers with 3x attempts, 5s timeout
-- **File-based storage:** JSON results, auto-cleanup after 3 days
-
-## Data Flow
-
-```
-Browser Session
-      ↓
-UdemyAPI (auth check)
-      ↓
-[Source pages] → [Course pages xN]   [Source pages] → [Course pages xN]
-      ↓                    ↓               ↓                    ↓
-   Course data         Course data     Course data         Course data
-      ↓
-Merge by URL (collect coupon codes)
-      ↓
-Check Enrollment (API calls)
-      ↓
-Auto-Claim (if not enrolled + valid coupon)
-      ↓
-JSON Reports
+```text
+Coupon sources
+    │
+    ▼
+find ── discover and resolve Udemy URLs
+    │
+    ├── *_scrape.json
+    ▼
+merge ── normalize URL, combine duplicate course data
+    │
+    ├── *_merged.json
+    ▼
+list ── Udemy session, enrollment, and pricing checks
+    │
+    ├── *_checked.json
+    ▼
+claim ── open eligible URLs in system browser
+    │
+    ▼
+User completes enrollment on Udemy
 ```
 
-## Key Components
+`run` coordinates same `find → list → claim` sequence. It stops before `claim` when `list` produces no checked courses.
 
-### Commands (`src/commands/`)
-- **whoami** — Validate browser session + show user info
-- **find** — Run all scrapers, merge results
-- **list** — Load merged results, check enrollment
-- **claim** — Auto-enroll in available courses
-- **config** — View/edit configuration
+## CLI layer
 
-### Plugins (`src/plugins/`)
+`src/cli.ts` parses command and `find` options, then delegates to command modules:
 
-**Browsers** (`src/plugins/browsers/`)
-- Read browser-specific cookie databases
-- Support: Firefox, Chrome, Brave
+- `whoami` validates current Udemy session.
+- `config` creates or updates TOML configuration.
+- `find` runs configured scraper plugins and merges output.
+- `list` checks newest merged result against Udemy.
+- `claim` opens claimable URLs in batches.
+- `run` coordinates complete workflow.
+- `update` verifies and replaces installed release executable.
 
-**Scrapers** (`src/plugins/scrapers/`)
-- Playwright-based source-page scraping plus course-page resolution
-- 4 sources: realdiscount, couponscorpion, udemyxpert, couponami
-- Configurable retry logic (3x, 5s max)
+Commands report operational errors and terminate with non-zero status.
 
-### Udemy (`src/udemy/`)
-- **session.ts** — Extract Udemy auth token from browser cookies
-- **api.ts** — REST API client (GET /users/me/, enrollment checks)
-- **enrollment.ts** — Check and claim logic
+## Discovery plugins
 
-### Merge (`src/merge/`)
-- **merger.ts** — Deduplicate by URL, collect all coupon codes
-- Keep best discount % as primary
+Scrapers implement `ScraperPlugin` from `src/types.ts` and are selected through `src/plugins/registry.ts`.
 
-### Storage (`src/storage/`)
-- **results.ts** — Save/load JSON (timestamped files)
-- **cleanup.ts** — Delete files older than 3 days
+Current sources use two strategies:
 
-## Configuration
+- `realdiscount` fetches structured source API directly and maps returned offers into courses.
+- `couponscorpion`, `udemyxpert`, and `couponami` use installed system browser through Playwright. They scrape listing pages into course seeds, then resolve source course pages into Udemy URLs and coupon codes.
 
-```json
-{
-  "pages": 1,                    // Pages to scrape per source
-  "sources": [...],              // Active sources
-  "sourceParallel": true,        // Run source scrapers concurrently
-  "parallel": 4,                 // Max course pages open at once per source
-  "browser": "firefox",          // Browser for session
-  "headless": true,              // Run Playwright headless
-  "autoOpen": false,             // Auto-open URLs after claim
-  "expandCoupons": true,         // Discover instructor-wide coupons
-  "resultsDir": "~/.coupon-finder/results"
-}
+Browser-based sources share URL normalization, coupon extraction, and bounded-concurrency helpers from `src/utils/scraper.ts`.
+
+Source concurrency and course-page concurrency are separate:
+
+- `sourceParallel` controls whether source plugins run together.
+- `parallel` limits simultaneous course pages inside each browser-based source.
+
+Retries and timeouts are selected by each source operation. Source failure is isolated: `find` keeps output from successful sources.
+
+## Course merging
+
+`src/merge/merger.ts` canonicalizes Udemy URLs and uses canonical URL as deduplication key.
+
+For duplicates, merger:
+
+- combines unique coupon codes;
+- retains available metadata;
+- keeps greatest numeric discount value reported by sources.
+
+Coupon order is discovery order. Merger does not validate coupon; validation happens during `list`.
+
+## Session and Udemy checks
+
+`src/udemy/session.ts` locates selected browser profile, reads Udemy cookies, and extracts access token. `src/udemy/api.ts` sends bearer-authenticated requests to Udemy.
+
+`list` processes courses sequentially:
+
+1. Extract course slug from canonical Udemy URL.
+2. Fetch course identity and pricing metadata.
+3. Check whether current user is enrolled.
+4. Treat intrinsically free, unenrolled course as claimable.
+5. For paid course, test discovered coupon codes until free code is found or candidates are exhausted.
+6. Store verified free code as `appliedCouponCode`.
+
+A claimable course is not enrolled and either intrinsically free or reduced to zero by validated coupon. Partial discounts are recorded but are not claimable.
+
+See [Udemy API implementation reference](api-udemy.md) for endpoints and error semantics.
+
+## Claim behavior
+
+`src/commands/claim.ts` loads newest checked result and selects courses where:
+
+```text
+claimable = true
+enrolled = false
+claimError is absent
 ```
 
-## Error Handling
+It builds URL with verified coupon code and passes URLs to `src/utils/browser-opener.ts`. Opener launches default system browser in batches of 10 and waits for user between batches.
 
-- **Missing session:** Show helpful error + login steps
-- **Scraper timeout:** Retry 3x (5s max), then skip with warning
-- **Enrollment check failure:** Mark course, continue
-- **Config corruption:** Reset to defaults + warn
+No enrollment or checkout request is sent by `claim`.
 
-## Performance Optimizations
+## Configuration and storage
 
-- Playwright runs headless (no UI overhead)
-- Images disabled in browser (save bandwidth)
-- Source scrapers run in parallel by default
-- Course pages open with bounded concurrency
-- 3-day result file cleanup (manage disk)
-- Retry logic with exponential backoff (graceful failures)
+Configuration is serialized as TOML at `~/.coupon-finder/config.toml`. Legacy JSON configuration is normalized and migrated when loaded.
 
-## Future Enhancements
+Current workflow uses:
 
-- Coupon expansion: Resolve instructor-wide coupons
-- Safari browser support
-- Enrollment filtering (don't re-show already-enrolled)
-- Advanced filtering (by category, instructor, price)
-- Scheduled runs (cron-like)
+- page count and enabled sources;
+- source and course-page concurrency;
+- browser selection;
+- headless browser mode.
+
+Result storage is fixed at `~/.coupon-finder/results/`. `find` cleans directory entries older than three days before scraping.
+
+## Update trust chain
+
+Release update accepts only stable GitHub releases containing:
+
+- platform-specific executable;
+- `checksums.txt`;
+- `checksums.txt.sig`.
+
+Updater verifies manifest signature with embedded public key, verifies selected executable hash, creates one backup, and atomically replaces installed binary. See [release guide](releasing.md).
+
+## Main modules
+
+```text
+src/
+├── cli.ts                 command dispatch and option parsing
+├── commands/              user-facing command workflows
+├── plugins/               scraper registry and source plugins
+├── merge/                 URL-based deduplication
+├── storage/               JSON result persistence and cleanup
+├── udemy/                 browser session and Udemy API checks
+└── utils/                 browser, retry, release, and shared helpers
+```
+
+Tests are colocated with source as `src/**/*.test.ts`.
