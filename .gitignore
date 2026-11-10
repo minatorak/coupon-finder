@@ -24,3 +24,4 @@ skills-lock.json
 # Never track release signing private keys.
 **/*-private.pem
 **/*-private.key
+docs/superpowers/
