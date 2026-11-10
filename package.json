@@ -1,6 +1,6 @@
 {
   "name": "coupon-finder",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "type": "module",
   "bin": "./src/cli.ts",
   "scripts": {
