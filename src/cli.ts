@@ -34,6 +34,47 @@ function parseFindOptions(args: string[]): FindOptions {
   return options;
 }
 
+interface BrowserRegistry {
+  findExecutable(
+    browser: "chromium" | "firefox"
+  ): {
+    directory?: string;
+    executablePath?: () => string;
+    downloadURLs?: string[];
+  } | undefined;
+}
+
+async function releaseSmoke(): Promise<void> {
+  const [{ chromium, firefox }, coreBundle] = await Promise.all([
+    import("playwright"),
+    import("playwright-core/lib/coreBundle"),
+  ]);
+  if (!chromium || !firefox) {
+    throw new Error("Packaged Playwright browser types are unavailable.");
+  }
+  const registryExports = coreBundle as unknown as {
+    registry?: { registry?: BrowserRegistry };
+  };
+  const registry = registryExports.registry?.registry;
+  if (!registry?.findExecutable) {
+    throw new Error("Packaged Playwright browser registry is unavailable.");
+  }
+  for (const browser of ["chromium", "firefox"] as const) {
+    const executable = registry.findExecutable(browser);
+    const executablePath = executable?.executablePath;
+    if (
+      !executable?.directory ||
+      typeof executablePath !== "function" ||
+      !executablePath() ||
+      (executable.downloadURLs?.length ?? 0) === 0
+    ) {
+      throw new Error(
+        `Packaged Playwright browser registry is incomplete for ${browser}.`
+      );
+    }
+  }
+}
+
 async function main() {
   const args = Bun.argv.slice(2);
 
@@ -49,6 +90,10 @@ async function main() {
       case "--version":
       case "-v":
         console.log(`coupon-finder v${VERSION}`);
+        break;
+
+      case "--release-smoke":
+        await releaseSmoke();
         break;
 
       case "whoami":
