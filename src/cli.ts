@@ -10,6 +10,10 @@ import { logger } from "./utils/logger";
 import { VERSION } from "./version";
 import { FindOptions } from "./commands/find";
 import { SourceType } from "./types";
+import { chromium, firefox } from "playwright";
+// Static import: bun compile embeds it, so the release smoke never needs
+// node_modules on the machine running the compiled binary.
+import { registry as coreBundleExports } from "playwright-core/lib/coreBundle";
 
 function parseFindOptions(args: string[]): FindOptions {
   const options: FindOptions = {};
@@ -34,6 +38,43 @@ function parseFindOptions(args: string[]): FindOptions {
   return options;
 }
 
+interface BrowserRegistry {
+  findExecutable(
+    browser: "chromium" | "firefox"
+  ): {
+    directory?: string;
+    executablePath?: () => string;
+    downloadURLs?: string[];
+  } | undefined;
+}
+
+async function releaseSmoke(): Promise<void> {
+  if (!chromium || !firefox) {
+    throw new Error("Packaged Playwright browser types are unavailable.");
+  }
+  const registryExports = coreBundleExports as unknown as {
+    registry?: BrowserRegistry;
+  };
+  const registry = registryExports.registry;
+  if (!registry?.findExecutable) {
+    throw new Error("Packaged Playwright browser registry is unavailable.");
+  }
+  for (const browser of ["chromium", "firefox"] as const) {
+    const executable = registry.findExecutable(browser);
+    const executablePath = executable?.executablePath;
+    if (
+      !executable?.directory ||
+      typeof executablePath !== "function" ||
+      !executablePath() ||
+      (executable.downloadURLs?.length ?? 0) === 0
+    ) {
+      throw new Error(
+        `Packaged Playwright browser registry is incomplete for ${browser}.`
+      );
+    }
+  }
+}
+
 async function main() {
   const args = Bun.argv.slice(2);
 
@@ -49,6 +90,10 @@ async function main() {
       case "--version":
       case "-v":
         console.log(`coupon-finder v${VERSION}`);
+        break;
+
+      case "--release-smoke":
+        await releaseSmoke();
         break;
 
       case "whoami":
