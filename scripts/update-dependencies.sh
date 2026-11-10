@@ -8,6 +8,10 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$(git -C "$script_dir" rev-parse --show-toplevel)"
 
 ASSUME_YES=0
+if [ "$#" -gt 1 ]; then
+  echo "usage: update-dependencies.sh [--yes]" >&2
+  exit 2
+fi
 case "${1:-}" in
   "") ;;
   --yes) ASSUME_YES=1 ;;
@@ -62,17 +66,24 @@ if [ -n "$(git status --short)" ]; then
 fi
 
 echo "== outdated =="
-outdated_output=$(bun outdated 2>/dev/null || true)
+if ! outdated_output=$(bun outdated 2>&1); then
+  echo "$outdated_output" >&2
+  echo "dependency check failed (registry unreachable?)" >&2
+  exit 1
+fi
 echo "$outdated_output"
 bun_runtime_version=$(bun --version)
-bun_pinned_version=$(
-  grep -m1 'BUN_VERSION:' .github/workflows/build.yml 2>/dev/null |
-    sed 's/.*"\(.*\)".*/\1/'
-)
-echo "bun runtime: local $bun_runtime_version, pinned $bun_pinned_version"
+bun_pins_match=1
+for file in .github/workflows/build.yml .github/workflows/ci.yml; do
+  [ -f "$file" ] || continue
+  pin=$(grep -m1 'BUN_VERSION:' "$file" | sed 's/.*"\(.*\)".*/\1/')
+  echo "bun pin in $file: $pin"
+  [ "$pin" = "$bun_runtime_version" ] || bun_pins_match=0
+done
+echo "bun runtime: local $bun_runtime_version"
 if ! echo "$outdated_output" | grep -Eq '^\|[[:space:]]+playwright[[:space:]]+\|' &&
   ! echo "$outdated_output" | grep -Eq '^\|[[:space:]]+@types/bun[[:space:]]+\|' &&
-  [ "$bun_runtime_version" = "$bun_pinned_version" ]; then
+  [ "$bun_pins_match" -eq 1 ]; then
   echo "already up to date"
   exit 0
 fi
@@ -87,8 +98,8 @@ if echo "$outdated_output" | grep -Eq '^\|[[:space:]]+playwright[[:space:]]+\|';
   fi
 fi
 upgrade_bun=0
-if [ "$bun_runtime_version" != "$bun_pinned_version" ]; then
-  if confirm "bun runtime: local $bun_runtime_version vs pinned $bun_pinned_version — upgrade local bun and sync workflow pins?"; then
+if [ "$bun_pins_match" -eq 0 ]; then
+  if confirm "bun runtime: local $bun_runtime_version vs workflow pins — upgrade local bun and sync workflow pins?"; then
     upgrade_bun=1
   else
     echo "skipping bun runtime update"
