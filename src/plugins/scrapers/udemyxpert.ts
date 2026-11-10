@@ -87,8 +87,9 @@ export class UdemyxpertScraper implements ScraperPlugin {
         const image = element.locator("img").first();
         const title = await image.getAttribute("alt");
         const discount = await element
-          .locator('[data-slot="badge"]')
-          .textContent()
+          .locator(".badge--discount")
+          .first()
+          .textContent({ timeout: 2000 })
           .catch(() => null);
 
         if (href && title) {
