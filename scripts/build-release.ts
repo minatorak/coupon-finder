@@ -1,5 +1,46 @@
-import { chmodSync, mkdirSync } from "fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
+
+/**
+ * playwright-core resolves its own package.json and browsers.json with
+ * computed requires of absolute build-time paths, which ENOENT on any machine
+ * without that exact node_modules. Rewrite them to bundlable literals so the
+ * compiled binary is self-contained; restore the originals after the build.
+ */
+function patchPlaywrightCore(): () => void {
+  const rules: { pattern: RegExp; replacement: string }[] = [
+    {
+      pattern: /require\((?:import_\w+\.default|path)\.join\(packageRoot, "package\.json"\)\)/g,
+      replacement: 'require("../package.json")',
+    },
+    {
+      pattern: /require\((?:import_\w+\.default|path)\.join\(packageRoot, "browsers\.json"\)\)/g,
+      replacement: 'require("../browsers.json")',
+    },
+  ];
+  const files = [
+    "node_modules/playwright-core/lib/package.js",
+    "node_modules/playwright-core/lib/coreBundle.js",
+  ];
+  const backups: { file: string; original: string }[] = [];
+  for (const relative of files) {
+    const file = resolve(projectRoot, relative);
+    const original = readFileSync(file, "utf8");
+    let patched = original;
+    for (const rule of rules) {
+      patched = patched.replace(rule.pattern, rule.replacement);
+    }
+    if (patched !== original) {
+      writeFileSync(file, patched);
+      backups.push({ file, original });
+    }
+  }
+  return () => {
+    for (const backup of backups) {
+      writeFileSync(backup.file, backup.original);
+    }
+  };
+}
 
 const TARGETS = {
   "darwin-arm64": "bun-darwin-arm64",
@@ -63,6 +104,10 @@ const command = [
   "--compile",
   `--target=${TARGETS[target]}`,
   "--external=electron",
+  // Bundle node_modules into the executable: released binaries run on machines
+  // without a node_modules directory beside them, and bun otherwise
+  // externalizes playwright and resolves it against the build-time path.
+  "--packages=bundle",
   `--outfile=${outputPath}`,
   resolve(projectRoot, "src/cli.ts"),
 ];
@@ -74,11 +119,17 @@ if (nativeTarget === target) {
 }
 
 console.log(`Building ${target} -> ${outputPath}`);
-const result = Bun.spawnSync(command, {
-  cwd: projectRoot,
-  stdout: "inherit",
-  stderr: "inherit",
-});
+const restorePlaywrightCore = patchPlaywrightCore();
+let result: Bun.SpawnSyncResponse;
+try {
+  result = Bun.spawnSync(command, {
+    cwd: projectRoot,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+} finally {
+  restorePlaywrightCore();
+}
 
 if (!result.success) {
   process.exit(result.exitCode || 1);

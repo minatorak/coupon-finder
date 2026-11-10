@@ -10,6 +10,10 @@ import { logger } from "./utils/logger";
 import { VERSION } from "./version";
 import { FindOptions } from "./commands/find";
 import { SourceType } from "./types";
+import { chromium, firefox } from "playwright";
+// Static import: bun compile embeds it, so the release smoke never needs
+// node_modules on the machine running the compiled binary.
+import { registry as coreBundleExports } from "playwright-core/lib/coreBundle";
 
 function parseFindOptions(args: string[]): FindOptions {
   const options: FindOptions = {};
@@ -45,17 +49,13 @@ interface BrowserRegistry {
 }
 
 async function releaseSmoke(): Promise<void> {
-  const [{ chromium, firefox }, coreBundle] = await Promise.all([
-    import("playwright"),
-    import("playwright-core/lib/coreBundle"),
-  ]);
   if (!chromium || !firefox) {
     throw new Error("Packaged Playwright browser types are unavailable.");
   }
-  const registryExports = coreBundle as unknown as {
-    registry?: { registry?: BrowserRegistry };
+  const registryExports = coreBundleExports as unknown as {
+    registry?: BrowserRegistry;
   };
-  const registry = registryExports.registry?.registry;
+  const registry = registryExports.registry;
   if (!registry?.findExecutable) {
     throw new Error("Packaged Playwright browser registry is unavailable.");
   }
