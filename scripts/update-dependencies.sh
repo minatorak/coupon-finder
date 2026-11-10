@@ -4,7 +4,8 @@
 # Heavy-impact updates (playwright, bun runtime) ask before acting unless --yes.
 set -euo pipefail
 
-cd "$(git rev-parse --show-toplevel)"
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+cd "$(git -C "$script_dir" rev-parse --show-toplevel)"
 
 ASSUME_YES=0
 case "${1:-}" in

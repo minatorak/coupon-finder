@@ -4,8 +4,13 @@
 #   verify.sh --full  basic + browser smoke test + release build smoke
 set -euo pipefail
 
-cd "$(git rev-parse --show-toplevel)"
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+cd "$(git -C "$script_dir" rev-parse --show-toplevel)"
 
+if [ "$#" -gt 1 ]; then
+  echo "usage: verify.sh [--full]" >&2
+  exit 2
+fi
 FULL=0
 case "${1:-}" in
   "") ;;
