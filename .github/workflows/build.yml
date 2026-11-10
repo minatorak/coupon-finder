@@ -71,11 +71,20 @@ jobs:
           ./dist/release/coupon-finder-${{ matrix.target }} --version
           ./dist/release/coupon-finder-${{ matrix.target }} --help >/dev/null
 
-      - name: Upload release executable
+      - name: Package update bridge archive
+        run: |
+          bun run scripts/package-update-bridge.ts -- \
+            --target "${{ matrix.target }}" \
+            --binary "dist/release/coupon-finder-${{ matrix.target }}" \
+            --output-dir dist/release
+
+      - name: Upload release executable and bridge archive
         uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.target }}
-          path: dist/release/coupon-finder-${{ matrix.target }}
+          path: |
+            dist/release/coupon-finder-${{ matrix.target }}
+            dist/release/coupon-finder-${{ matrix.target }}.tar.gz
           if-no-files-found: error
           retention-days: 7
 
@@ -104,6 +113,9 @@ jobs:
             test -f "${source}"
             cp "${source}" "release/coupon-finder-${target}"
             chmod 0755 "release/coupon-finder-${target}"
+            archive="artifacts/release-${target}/coupon-finder-${target}.tar.gz"
+            test -f "${archive}"
+            cp "${archive}" "release/coupon-finder-${target}.tar.gz"
           done
 
       - name: Create stable checksum manifest
@@ -116,6 +128,9 @@ jobs:
               coupon-finder-darwin-arm64 \
               coupon-finder-darwin-x64 \
               coupon-finder-linux-x64 \
+              coupon-finder-darwin-arm64.tar.gz \
+              coupon-finder-darwin-x64.tar.gz \
+              coupon-finder-linux-x64.tar.gz \
               | LC_ALL=C sort -k2,2
           ) > release/checksums.txt
 
@@ -150,6 +165,9 @@ jobs:
             coupon-finder-darwin-arm64
             coupon-finder-darwin-x64
             coupon-finder-linux-x64
+            coupon-finder-darwin-arm64.tar.gz
+            coupon-finder-darwin-x64.tar.gz
+            coupon-finder-linux-x64.tar.gz
             checksums.txt
             checksums.txt.sig
           )
